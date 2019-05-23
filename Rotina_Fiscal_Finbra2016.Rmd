@@ -1,12 +1,13 @@
 ---
 title: "Municípios - FPM e Receita Corrente"
 author: ""
-date: "5/20/2019"
+date: ""
 output: html_document
 ---
 
 ## Participação do FPM nas receitas correntes / 2016 (%)
 
+Importância da receita oriunda do Fundo de Participação dos Municípios (FPM) na receita total separado por região e faixa populacional.
 
 ``` {r inicio, include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=FALSE}
 
@@ -295,3 +296,4 @@ t <- DT::datatable(tabfinal,
 t
 ```
 
+Os dados evidenciam a importância do FPM para regiões Norte e Nordeste, e, mais que isso, para municípios com menor número de habitantes, devido a baixa arrecadação de receitas próprias com impostos como IPTU, ITBI e ISS. 
