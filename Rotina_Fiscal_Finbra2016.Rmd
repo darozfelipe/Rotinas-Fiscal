@@ -1,0 +1,297 @@
+---
+title: "Municípios - FPM e Receita Corrente"
+author: ""
+date: "5/20/2019"
+output: html_document
+---
+
+## Participação do FPM nas receitas correntes / 2016 (%)
+
+
+``` {r inicio, include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=FALSE}
+
+library(dplyr)
+library(XML)
+library("openxlsx")
+library(data.table)
+library(formattable)
+library(tidyr)
+library(zoo)
+
+
+data <- read.xlsx("/Users/felipedaroz/Mega/Academia/Fiscal/MaterialFP/Nota/finbra_2.xlsx", sheet = "finbra_2", colNames = TRUE, rowNames = FALSE)
+
+# separando por estados
+#uf <- data.frame( "uf"= c('AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN ', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'), "cod_uf" = c(12, 27, 13, 16, 29, 23, 53, 32, 52, 21, 31, 50, 51, 15, 25, 26, 22, 41, 33, 24, 11, 14, 43, 42, 28, 35, 17))
+# separado codigos municipios
+#cod_mun <- unique(data$CodIBGE)
+
+# criando codigo para tipo de receita ou deducao
+# 1 = receita bruta, 2 = deducoes - trans constitu, 3 = deducoes - FUNDEB, 4 = outras deducoes
+data$tipo <- NA # criando coluna - vou inserir numero por categoria
+# funcao para verificar qual categoria por linha
+funk <- function(x) {     
+  if (x == 'Receitas Brutas Realizadas') {
+    1
+  } else if (x == 'DeduÁıes - TransferÍncias Constitucionais') {
+    2
+    }
+  else if (x == 'DeduÁıes - FUNDEB') {
+    3}
+  else  {
+    4
+  }}
+
+# aplicando funcao via lapply
+data$tipo <- lapply(data[,5], FUN = funk)
+
+
+
+```
+
+
+```{r dados, include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=FALSE}
+
+# filtrando categorias que utilizarei:
+  # receita total: Total Receitas 1
+  # cota parte FPM: 1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 1
+  #               1.7.2.1.01.03.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios - 1% Cota Anual 1
+  #               1.7.2.1.01.04.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios - 1% Cota entregue no mÍs de julho (67)(I) 1
+  # deducao FUNDEB do FPM: 1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 3
+
+# criando coluna com chave (descricao conta + tipo)
+data$chave <- paste(data$Conta, data$tipo)
+# aplicando filtro
+dataft <- data[data$chave == 'Total Receitas 1' | data$chave == '1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 1' |
+                   data$chave == '1.7.2.1.01.03.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios - 1% Cota Anual 1' |
+                   data$chave == '1.7.2.1.01.04.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios - 1% Cota entregue no mÍs de julho (67)(I) 1' | data$chave == '1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 3',]
+
+
+# Agora preciso separa por categorias...dois criterios
+  # regiao
+  # populacao
+
+# separando por região
+freg <- function(x) {
+  if (x == 'RS'| x == 'PR' | x == 'SC') {
+    'Sul'
+  } else if (x == 'SP' | x == 'MG' | x == 'RJ' | x == 'ES') {
+    'Sudeste'
+  } else if (x == 'GO' | x == 'MS' | x == 'MT') {
+    'Centro Oeste'
+  } else if (x == 'BA' | x == 'SE' | x == 'AL' | x == 'PE' | x == 'PB' | x == 'RN' | x == 'CE' | x == 'PI' | x == 'MA') {
+    'Nordeste'
+  } else {
+   'Norte' 
+  }
+} 
+
+# criando categoria de regiao
+data$reg <- NA
+dataft$reg <- sapply(dataft[,3], FUN = freg)
+
+
+# Agora preciso criar categorias e já colocar na tabela
+  # até 5.000
+  # de 5 a 10.000
+  # de 10 a 20.000
+  # de 20 a 50.000
+  # de 50 a 100.000
+  # de 100 a 500.000
+  # de 500 a 1.000.000
+  # acima de 1.000.000
+
+#unique(subset(filtro_NE, Populacao <= 5000,, select = "CodIBGE"))
+#unique(filtro_NE[filtro_NE$Populacao <= 5000,2])
+
+# criando categorias populacionais
+dataft$pop <- 1 # criando coluna - vou inserir numero por categoria
+# funcao para verificar qual categoria por linha
+funk2 <- function(x) {     
+  if (x < 5000) {
+    'até 5.000'
+  } 
+  else if (x >= 5001  & x <=  10000) {
+    'de 5.001 a 10.000'
+  }
+  else if (x >= 10001 & x <=20000) {
+    'de 10.001 a 20.000'
+  }
+  else if (x >= 20001 & x <= 50000) {
+    'de 20.001 a 50.000'
+  }
+  else if (x>= 50001 & x <= 100000) {
+    'de 50.001 a 100.000'
+  }
+  else if (x >= 100001 & x <= 500000) {
+    'de 100.001 a 500.000'
+  }
+  else if (x >= 500001 & x <= 1000000) {
+    'de 500.001 a 1.000.000'
+  }
+  else  {
+    'acima de 1.000.000'
+  }}
+
+# aplicando funcao via sapply
+dataft$pop <- sapply(dataft[,4], FUN = funk2)
+
+# criando cateogira para calculos
+calc <- function(x) {     
+  if (x == 'Total Receitas 1') {
+    'A'
+  } 
+  else if (x == '1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 1') {
+    'B'
+  }
+  else if (x == '1.7.2.1.01.03.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios - 1% Cota Anual 1') {
+    'C'
+  } else if (x == '1.7.2.1.01.04.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios - 1% Cota entregue no mÍs de julho (67)(I) 1') {
+    'D'
+  } else {
+    'E'
+  }}
+
+dataft$calc <- NA
+# aplicando funcao via sapply
+dataft$calc <- sapply(dataft[,9], FUN = calc)
+
+
+
+# filtrando apenas informacoes que preciso (UF, faixa populacional, valores)
+
+
+f1 <- dataft %>%
+ group_by(reg, pop, calc) %>%
+  summarise(x = sum(Valor))
+  
+recFPM <- f1 %>%
+  group_by(reg, pop) %>%
+  filter(calc %in% c('B','C','D') ) %>%
+  summarise(h = sum(x))
+
+dedFPM <- f1 %>%
+  group_by(reg, pop) %>%
+  filter(calc %in% c('E') ) %>%
+  mutate(z = sum(x))
+
+recT <- f1 %>%
+  group_by(reg, pop) %>%
+  filter(calc %in% c('A') ) %>%
+  mutate(z = sum(x))
+
+
+dffinal <- data.frame(recFPM$reg)
+dffinal$pop <- recFPM$pop
+dffinal$rec <- recFPM$h
+dffinal$ded <- dedFPM$z
+dffinal$rtot <- recT$z
+
+totpop <- dffinal %>%
+  group_by(pop) %>%
+  summarise(totrec = sum(rec), totded = sum(ded), tot2 = sum(rtot))
+
+totreg  <- dffinal %>%
+  group_by(recFPM.reg) %>%
+  summarise(totrec = sum(rec), totded = sum(ded), tot2 = sum(rtot))
+
+
+
+
+
+
+totpop$tpop <- ((totpop$totrec-totpop$totded)/totpop$tot2)*100
+totreg$treg <- ((totreg$totrec-totreg$totded)/totreg$tot2)*100
+
+totreg[6,5] <- ((sum(totpop$totrec)-sum(totpop$totded))/sum(totpop$tot2))*100
+rownames(totreg) <- c('Centro Oeste', 'Nordeste', 'Norte', 'Sudeste', 'Sul', 'Brasil')
+totreg[6,1] <- 'Brasil'
+
+dffinal$final <- ((dffinal$rec-dffinal$ded)/dffinal$rtot)*100
+
+dffinal$rec <- NULL
+dffinal$ded <- NULL
+dffinal$rtot <- NULL
+totreg[,c(2,3,4)] <- NULL
+
+colnames(dffinal) <- c("Região", "Populacao", "FPM/Receita Corrente Total")
+
+```
+
+
+```{r tabela, include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=FALSE}
+# construindo tabela
+
+tabfinal <- dffinal %>%
+  spread(`Populacao`,`FPM/Receita Corrente Total`)
+
+# transpose all but the first column (name)
+n <- tabfinal$Região
+tabfinal <- as.data.frame(t(tabfinal[,-1]))
+colnames(tabfinal) <- n
+tabfinal$"Populacao" <- factor(row.names(tabfinal))
+
+# inserindo totais
+  # total populacao
+tabfinal <- cbind(tabfinal,totpop$tpop)
+  
+# total regiao
+totreg <- as.data.frame(t(totreg[,-1]))
+colnames(totreg) <- c("Centro Oeste", "Nordeste", "Norte", "Sudeste", "Sul","totpop$tpop")
+totreg$"Populacao" <- NA
+totreg <- totreg[,c(1,2,3,4,5,7,6)]
+tabfinal <- rbind(tabfinal, totreg)
+tabfinal$Populacao <- as.character(tabfinal$Populacao)
+tabfinal[9,6] <- "Total"
+
+
+
+tabfinal$org <- c(8,1,3,6,4,2,5,7,9)
+tabfinal <- tabfinal %>%
+  arrange(org)
+
+tabfinal$org <- NULL
+tabfinal <- tabfinal[,c(6,1,2,3,4,5,7)]
+tabfinal <- as.data.frame(tabfinal)
+
+#retirando tantas casas decimais
+tabfinal[,2] <- format(tabfinal[,2], digits = 3)
+tabfinal[,3] <- format(tabfinal[,3], digits = 3)
+tabfinal[,4] <- format(tabfinal[,4], digits = 3)
+tabfinal[,5] <- format(tabfinal[,5], digits = 3)
+tabfinal[,6] <- format(tabfinal[,6], digits = 3)
+tabfinal[,7] <- format(tabfinal[,7], digits = 3)
+
+#renomeando
+names(tabfinal)[1] <- "População (milhares)"
+names(tabfinal)[2] <- "Centro Oeste"
+names(tabfinal)[3] <- "Nordeste"
+names(tabfinal)[4] <- "Norte"
+names(tabfinal)[5] <- "Sudeste"
+names(tabfinal)[6] <- "Sul"
+names(tabfinal)[7] <- "Brasil"
+
+
+tabfinal$`Centro Oeste` <- gsub("\\.", ",", tabfinal$`Centro Oeste`)
+tabfinal$Nordeste <- gsub("\\.", ",", tabfinal$Nordeste)
+tabfinal$Norte <- gsub("\\.", ",", tabfinal$Norte)
+tabfinal$Sudeste <- gsub("\\.", ",", tabfinal$Sudeste)
+tabfinal$Sul <- gsub("\\.", ",", tabfinal$Sul)
+tabfinal$Brasil <- gsub("\\.", ",", tabfinal$Brasil)
+
+#tabfinal <- as.data.frame(tabfinal)
+tabfinal <- format(tabfinal, decimal.mark = ",")
+#write.xlsx(tabfinal, file = "/Users/felipedaroz/Mega/Academia/Fiscal/MaterialFP/Nota/tabela_finbra16.xlsx")
+library(shiny)
+#cria a tabela html
+t <- DT::datatable(tabfinal, 
+          rownames = FALSE,
+          options = list(
+            language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Portuguese.json'),
+            pageLength = 25,
+            dom = 't',
+            columnDefs = list(list(className = 'dt-Center', target = 1:7))
+                        ))
+t
+```
+
