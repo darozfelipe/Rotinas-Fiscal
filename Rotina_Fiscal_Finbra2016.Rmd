@@ -27,6 +27,7 @@ data <- read.xlsx("/Users/felipedaroz/Mega/Academia/Fiscal/MaterialFP/Nota/finbr
 # separado codigos municipios
 #cod_mun <- unique(data$CodIBGE)
 
+
 # criando codigo para tipo de receita ou deducao
 # 1 = receita bruta, 2 = deducoes - trans constitu, 3 = deducoes - FUNDEB, 4 = outras deducoes
 data$tipo <- NA # criando coluna - vou inserir numero por categoria
@@ -283,17 +284,285 @@ tabfinal$Brasil <- gsub("\\.", ",", tabfinal$Brasil)
 #tabfinal <- as.data.frame(tabfinal)
 tabfinal <- format(tabfinal, decimal.mark = ",")
 #write.xlsx(tabfinal, file = "/Users/felipedaroz/Mega/Academia/Fiscal/MaterialFP/Nota/tabela_finbra16.xlsx")
-library(shiny)
-#cria a tabela html
-t <- DT::datatable(tabfinal, 
-          rownames = FALSE,
-          options = list(
-            language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Portuguese.json'),
-            pageLength = 25,
-            dom = 't',
-            columnDefs = list(list(className = 'dt-Center', target = 1:7))
-                        ))
-t
+
 ```
 
 Os dados evidenciam a importância do FPM para regiões Norte e Nordeste, e, mais que isso, para municípios com menor número de habitantes, devido a baixa arrecadação de receitas próprias com impostos como IPTU, ITBI e ISS. 
+
+```{r dados 2013, include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=FALSE}
+
+# upload dados 
+data13 <- read.xlsx("/Users/felipedaroz/Mega/Academia/Fiscal/MaterialFP/Nota/finbra_2013.xlsx", colNames = TRUE, rowNames = FALSE)
+
+# retirando primeiras linhas inuteis e renomeando
+data13 <- data13[-c(1,2,3),]
+colnames(data13) <- c('Instituicao','CodIBGE','UF','Populacao','Coluna','Conta','Valor')
+data13$Valor <- as.double(data13$Valor)
+data13$Populacao <- as.double(data13$Populacao)
+
+
+# criando codigo para tipo de receita ou deducao
+# 1 = receitas realizadas, 2 = deducoes
+data13$tipo <- NA # criando coluna - vou inserir numero por categoria
+# funcao para verificar qual categoria por linha
+funk13 <- function(x) {     
+  if (x == 'Receitas Realizadas') {
+    1
+  } else  {
+    2
+  }}
+
+# aplicando funcao via lapply
+data13$tipo <- lapply(data13[,5], FUN = funk13)
+
+# filtrando categorias que utilizarei:
+  # receita total: Total Receitas 1
+  # cota parte FPM: 1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 1
+  # deducao FUNDEB do FPM: 1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 2
+
+# criando coluna com chave (descricao conta + tipo)
+data13$chave <- paste(data13$Conta, data13$tipo)
+# aplicando filtro
+dataft_ <- data13[data13$chave == 'Total Receitas 1' | data13$chave == '1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 1' |
+                   data13$chave == '1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 2',]
+
+
+# Agora preciso separa por categorias...dois criterios
+  # regiao
+  # populacao
+
+# separando por região
+dataft_$reg <- sapply(dataft_[,3], FUN = freg)
+
+
+# criando categorias
+
+# aplicando funcao via sapply
+dataft_$pop <- sapply(dataft_[,4], FUN = funk2)
+
+
+# criando cateogira para calculos
+calc_ <- function(x) {     
+  if (x == 'Total Receitas 1') {
+    'A'
+  } 
+  else if (x == '1.7.2.1.01.02.00 - Cota-Parte do Fundo de ParticipaÁ„o dos MunicÌpios ø FPM 1') {
+    'B'
+  }  else {
+    'E'
+  }}
+
+dataft_$calc <- NA
+# aplicando funcao via sapply
+dataft_$calc <- sapply(dataft_[,9], FUN = calc_)
+
+
+
+# filtrando apenas informacoes que preciso (UF, faixa populacional, valores)
+
+f_ <- dataft_ %>% # filtrando 
+ group_by(reg, pop, calc) %>%
+  summarise(x = sum(Valor))
+  
+recFPM_ <- f_ %>% # filtrando receitas FPM
+  group_by(reg, pop) %>%
+  filter(calc %in% c('B') ) %>%
+  summarise(h = sum(x))
+
+dedFPM_ <- f_ %>% # filtrando deducao
+  group_by(reg, pop) %>%
+  filter(calc %in% c('E') ) %>%
+  mutate(z = sum(x))
+
+recT_ <- f_ %>% # filtrando receita total
+  group_by(reg, pop) %>%
+  filter(calc %in% c('A') ) %>%
+  mutate(z = sum(x))
+
+
+dffinal13 <- data.frame(recFPM_$reg)
+dffinal13$pop <- recFPM_$pop
+dffinal13$rec <- recFPM_$h
+dffinal13$ded <- dedFPM_$z
+dffinal13$rtot <- recT_$z
+
+totpop_ <- dffinal13 %>%
+  group_by(pop) %>%
+  summarise(totrec_ = sum(rec), totded_ = sum(ded), tot_ = sum(rtot))
+
+totreg_  <- dffinal13 %>%
+  group_by(recFPM_.reg) %>%
+  summarise(totrec_ = sum(rec), totded_ = sum(ded), tot_ = sum(rtot))
+
+
+
+totpop_$tpop <- ((totpop_$totrec_-totpop_$totded_)/totpop_$tot_)*100
+totreg_$treg <- ((totreg_$totrec_-totreg_$totded_)/totreg_$tot_)*100
+
+totreg_[6,5] <- ((sum(totpop_$totrec_)-sum(totpop_$totded_))/sum(totpop_$tot_))*100
+rownames(totreg_) <- c('Centro Oeste', 'Nordeste', 'Norte', 'Sudeste', 'Sul', 'Brasil')  #######
+totreg_[6,1] <- 'Brasil' ######
+
+dffinal13$final <- ((dffinal13$rec-dffinal13$ded)/dffinal13$rtot)*100
+
+dffinal13$rec <- NULL
+dffinal13$ded <- NULL
+dffinal13$rtot <- NULL
+totreg_[,c(2,3,4)] <- NULL
+
+colnames(dffinal13) <- c("Região", "Populacao", "FPM/Receita Corrente Total")
+
+
+
+
+# construindo tabela
+
+tabfinal13 <- dffinal13 %>%
+  spread(`Populacao`,`FPM/Receita Corrente Total`)
+
+# transpose all but the first column (name)
+n <- tabfinal13$Região
+tabfinal13 <- as.data.frame(t(tabfinal13[,-1]))
+colnames(tabfinal13) <- n
+tabfinal13$"Populacao" <- factor(row.names(tabfinal13))
+
+# inserindo totais
+  # total populacao
+tabfinal13 <- cbind(tabfinal13,totpop_$tpop)
+  
+# total regiao
+totreg_ <- as.data.frame(t(totreg_[,-1]))
+colnames(totreg_) <- c("Centro Oeste", "Nordeste", "Norte", "Sudeste", "Sul","totpop_$tpop")
+totreg_$"Populacao" <- NA
+totreg_ <- totreg_[,c(1,2,3,4,5,7,6)]
+tabfinal13 <- rbind(tabfinal13, totreg_)
+tabfinal13$Populacao <- as.character(tabfinal13$Populacao)
+tabfinal13[9,6] <- "Total"
+
+
+
+tabfinal13$org <- c(8,1,3,6,4,2,5,7,9)
+tabfinal13 <- tabfinal13 %>%
+  arrange(org)
+
+tabfinal13$org <- NULL
+tabfinal13 <- tabfinal13[,c(6,1,2,3,4,5,7)]
+tabfinal13 <- as.data.frame(tabfinal13)
+
+#retirando tantas casas decimais
+tabfinal13[,2] <- format(tabfinal13[,2], digits = 3)
+tabfinal13[,3] <- format(tabfinal13[,3], digits = 3)
+tabfinal13[,4] <- format(tabfinal13[,4], digits = 3)
+tabfinal13[,5] <- format(tabfinal13[,5], digits = 3)
+tabfinal13[,6] <- format(tabfinal13[,6], digits = 3)
+tabfinal13[,7] <- format(tabfinal13[,7], digits = 3)
+
+#renomeando
+names(tabfinal13)[1] <- "População (milhares)"
+names(tabfinal13)[2] <- "Centro Oeste"
+names(tabfinal13)[3] <- "Nordeste"
+names(tabfinal13)[4] <- "Norte"
+names(tabfinal13)[5] <- "Sudeste"
+names(tabfinal13)[6] <- "Sul"
+names(tabfinal13)[7] <- "Brasil"
+
+
+tabfinal13$`Centro Oeste` <- gsub("\\.", ",", tabfinal13$`Centro Oeste`)
+tabfinal13$Nordeste <- gsub("\\.", ",", tabfinal13$Nordeste)
+tabfinal13$Norte <- gsub("\\.", ",", tabfinal13$Norte)
+tabfinal13$Sudeste <- gsub("\\.", ",", tabfinal13$Sudeste)
+tabfinal13$Sul <- gsub("\\.", ",", tabfinal13$Sul)
+tabfinal13$Brasil <- gsub("\\.", ",", tabfinal13$Brasil)
+
+
+
+
+```
+
+
+```{r, include=TRUE, message=FALSE, warning=FALSE, eval=TRUE, echo=FALSE}
+
+# editando tabelas e fundindo-as
+#newrow <- c("","2016","2016","2016","2016","2016","2016")
+#tabfinal <- rbind(tabfinal,newrow)
+tabfinal <- tabfinal[(c(10,1:9)),]
+
+#newrow <- c("","2013","2013","2013","2013","2013","2013")
+#tabfinal13 <- rbind(tabfinal13,newrow)
+tabfinal13 <- tabfinal13[(c(10,1:9)),]
+
+tf <- merge(tabfinal13,tabfinal, by.x = "População (milhares)", by.y =  "População (milhares)" )
+tf <- tf[c(2,6,3,5,7,4,8,1,9),c(1,2,8,3,9,4,10,5,11,6,12,7,13)]
+
+colnames(tf) <- c("População (milhares)","Centro Oeste","Centro Oeste", "Nordeste","Nordeste", "Norte","Norte", "Sudeste","Sudeste","Sul", "Sul","Brasil","Brasil")
+
+
+#library(flextable)
+#library(officer)
+#fx <- flextable::merge_h(flextable(data.frame(tf)))
+#fx <- set_header_labels(fx, População..milhares. = "População (milhares)", 
+#                        Centro.Oeste.x = "Centro Oeste", Centro.Oeste.y = "Centro Oeste",
+#                        Nordeste.x = "Nordeste", Nordeste.y = "Nordeste",
+#                        Norte.x = "Norte", Norte.y = "Norte", 
+#                        Sudeste.x = "Sudeste", Sudeste.y = "Sudeste",
+#                        Sul.x = "Sul", Sul.y = "Sul",
+#                        Brasil.x = "Brasil", Brasil.y = "Brasil")   
+# merging cells
+#fx <- merge_at(fx, i=1, j=2:3, part = "header")
+#fx <- merge_at(fx, i=1, j=4:5, part = "header")
+#fx <- merge_at(fx, i=1, j=6:7, part = "header")
+#fx <- merge_at(fx, i=1, j=8:9, part = "header")
+#fx <- merge_at(fx, i=1, j=10:11, part = "header")
+#fx <- merge_at(fx, i=1, j=12:13, part = "header")
+
+# adicionando anos
+#fx <- flextable::add_header_row(fx,
+#                                values = c("","2013","2016","2013","2016","2013","2016","2013","2016","2013","2016","2013","2016"),
+#                                top = FALSE)
+#fx <- autofit(fx, add_w = 0, add_h = 0)
+#fx <- width(fx, j = ~Centro.Oeste.x+Centro.Oeste.y+Nordeste.x+Nordeste.y+Norte.x+Norte.y+Sudeste.x+Sudeste.y+Sul.x+Sul.y+Brasil.x+Brasil.y, width =   1.0937952)
+#fx <- width(fx, j = ~População..milhares., width =   5)
+#fx <- align(fx, align = 'center')
+#fx <- align_text_col(fx, align = "left")
+#fx <- bold(fx, part = "header")
+
+#library(shiny)
+#cria a tabela html
+
+ske <- htmltools::withTags(table(
+  class = 'display',
+  thead(
+    tr(
+      th(rowspan = 2, "População (milhares)"),
+      th(colspan = 2, "Centro Oeste"),
+      th(colspan =2, "Nordeste"),
+      th(colspan =2, "Norte"),
+      th(colspan = 2, "Sudeste"),
+      th(colspan = 2, "Sul"),
+      th(colspan = 2, "Brasil")
+    ),
+    tr
+    (lapply(rep(c("2013", "2016"), 6),th)
+      )
+  )
+))
+
+
+t <- DT::datatable(tf,
+          container = ske,
+         rownames = FALSE,
+          options = list(
+            language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Portuguese.json'),
+            pageLength = 25,
+           dom = 't',
+            columnDefs = list(list(className = 'dt-Center', target = 1:7))
+                        ))
+
+
+
+
+t
+
+
+```
+
