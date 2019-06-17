@@ -1,0 +1,212 @@
+---
+title: "Fiscal - Análise Investimento"
+author: "Felipe Da Roz"
+date: "6/14/2019"
+output: html_document
+---
+
+## Análise Despesas Públicas com Investimentos
+
+```{r 2019, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALSE}
+
+# carregando pacontes
+library(knitr) 
+library(dplyr) 
+library(tidyverse)
+library(zoo)
+
+# Montando tabela com valores mensais de 2019
+
+d0 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2019_investimento.csv", header = TRUE, sep = ",")
+d0 <- d0[,c(1,4:9)]
+
+colnames(d0) <- c("date", "elem", "elem_desc", "PL", "empe", "liq", "RP")
+
+# retirando mes 00
+d0 <- d0[d0$date != "00/2019",]
+
+
+# evitando notacao cientifica
+options(scipen = 999)
+
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
+# eu sei que devo usar group by e spread...
+d_19 <- d0 %>%
+  group_by(date, elem) %>%
+  summarise(liq = sum(liq,RP))
+
+
+# Inserindo descricoes dos programas e funcoes
+d_19$desc <- d0$elem_desc[match(d_19$elem,d0$elem)]
+
+# retirando o que nao tem valor 
+# jogando mes como coluna
+d_19 <- spread(d_19, key = date, value = liq)
+
+# deflacionando
+library(rbcb) # pacote Banco Central
+#data inicio da seleção
+DataInicio="2014-01-01"
+ipca <- rbcb::get_series(c(433), start_date=DataInicio)
+# criando deflator / utilizando funcao do Cecon
+source("https://raw.githubusercontent.com/arthurwelle/Cecon/master/RScripts")
+ipca$defl <- FazTexto.N_Indice(ipca$`433`)
+ipca$date2 <- paste(substring(ipca$date,6,7),substring(ipca$date,1,4), sep = "/")
+
+
+# Deflacionando
+for (i in 1:6) {
+  c <- colnames(d_19[,c(3:8)])
+ d_19[,c[i]] <- mapply('*', d_19[,c[i]], ipca[ipca$date2 == c[i],3])
+}
+
+```
+
+```{r 2018, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALSE}
+
+
+# Montando tabela com valores mensais de 2018
+
+d0 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2018_investimento.csv", header = TRUE, sep = ",")
+d0 <- d0[,c(1,4:9)]
+
+colnames(d0) <- c("date", "elem", "elem_desc", "PL", "empe", "liq", "RP")
+
+# retirando mes 00
+d0 <- d0[d0$date != "00/2018",]
+
+# evitando notacao cientifica
+options(scipen = 999)
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
+# eu sei que devo usar group by e spread...
+d_18 <- d0 %>%
+  group_by(date, elem) %>%
+  summarise(liq = sum(liq,RP))
+
+
+# Inserindo descricoes dos programas e funcoes
+d_18$desc <- d0$elem_desc[match(d_18$elem,d0$elem)]
+
+# retirando o que nao tem valor 
+#f10_14 <- f10_14[f10_14$liq != 0,]
+# jogando mes como coluna
+d_18 <- spread(d_18, key = date, value = liq)
+
+
+# Deflacionando
+for (i in 1:12) {
+  c <- colnames(d_18[,c(3:14)])
+ d_18[,c[i]] <- mapply('*', d_18[,c[i]], ipca[ipca$date2 == c[i],3])
+}
+
+```
+
+
+```{r 2014, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALSE}
+
+
+# Montando tabela com valores mensais de 2018
+
+d0 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2014_investimento.csv", header = TRUE, sep = ",")
+d0 <- d0[,c(1,4:9)]
+
+colnames(d0) <- c("date", "elem", "elem_desc", "PL", "empe", "liq", "RP")
+
+# retirando mes 00
+d0 <- d0[d0$date != "00/2014",]
+
+# evitando notacao cientifica
+options(scipen = 999)
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
+# eu sei que devo usar group by e spread...
+d_14 <- d0 %>%
+  group_by(date, elem) %>%
+  summarise(liq = sum(liq,RP))
+
+
+# Inserindo descricoes dos programas e funcoes
+d_14$desc <- d0$elem_desc[match(d_14$elem,d0$elem)]
+
+# retirando o que nao tem valor 
+#f10_14 <- f10_14[f10_14$liq != 0,]
+# jogando mes como coluna
+d_14 <- spread(d_14, key = date, value = liq)
+
+# Deflacionando
+for (i in 1:12) {
+  c <- colnames(d_14[,c(3:14)])
+ d_14[,c[i]] <- mapply('*', d_14[,c[i]], ipca[ipca$date2 == c[i],3])
+}
+
+d_14 <- d_14[c(-23),]
+d_14$elem <- as.numeric(as.character(d_14$elem))
+```
+
+```{r todos, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALSE}
+
+# agora vou juntar todas as tabelas
+inv <- d_19 %>%
+  left_join(select(d_18, c(1,3:14)), by = "elem") %>%
+  left_join(select(d_14, c(1,3:14)), by = "elem")
+
+# falta: somar trimestres e fazer calculos / ver es somo RP com liquidado
+
+# somando 1o trimestre
+tri1 <- inv %>%
+ mutate(tri1_19 = rowSums(select(.,'01/2019','02/2019','03/2019'))) %>%
+  mutate(tri1_18 = rowSums(select(.,'01/2018','02/2018','03/2018'))) %>%
+mutate(tri1_14 = rowSums(select(.,'01/2014','02/2014','03/2014')))
+
+
+
+# criando colunas de calculos
+tri1$peso14 <- NA
+tri1$var14 <- NA
+tri1$cont14 <- NA
+tri1$contp14 <- NA
+tri1$peso18 <- NA
+tri1$var18 <- NA
+tri1$cont18 <- NA
+tri1$contp18 <- NA
+#calculos para 2014
+for (i in 1:nrow(tri1)) {
+  tri1[i,'peso14'] <- (tri1[i,'tri1_14']/sum(tri1$tri1_14, na.rm = TRUE))*100
+  tri1[i,'var14'] <- (tri1[i,'tri1_19']/tri1[i,'tri1_14']-1)*100
+  tri1[i,'cont14'] <- ((tri1[i,'var14']/100)*(tri1[i,'peso14']/100))*100
+  tri1[i,'contp14'] <- (tri1[i,'cont14']/(sum(tri1[,'cont14'], na.rm = TRUE)))*100
+  
+   tri1[i,'peso18'] <- (tri1[i,'tri1_18']/sum(tri1$tri1_18, na.rm = TRUE))*100
+  tri1[i,'var18'] <- (tri1[i,'tri1_19']/tri1[i,'tri1_18']-1)*100
+  tri1[i,'cont18'] <- ((tri1[i,'var18']/100)*(tri1[i,'peso14']/100))*100
+  tri1[i,'contp18'] <- (tri1[i,'cont18']/(sum(tri1[,'cont18'], na.rm = TRUE)))*100
+  
+}
+
+# criando funcao e arredondando data frame
+round_df <- function(x, digits) {
+  # round all variables
+  #x : data frame
+  # number o digits
+  numeric_columns <- sapply(x, mode) == 'numeric'
+    x[numeric_columns] <-  round(x[numeric_columns], digits)
+    x
+}
+
+# diminuindo casas decimais e substituindo NA por 0
+tri1[,33:43] <- round_df(tri1[,33:43],2)
+tri1[is.na(tri1)] <- 0
+
+
+
+write.csv2(tri1,"/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/Output/inv_tri1.csv")
+
+
+
+
+
+
+```
+

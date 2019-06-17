@@ -1,0 +1,223 @@
+---
+title: "Analise Despesas"
+author: "Felipe Da Roz"
+date: "6/7/2019"
+output: html_document
+---
+
+## Análise Despesas por Função
+
+```{r 2014, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALSE}
+
+# carregando pacontes
+library(knitr) 
+library(dplyr) 
+library(tidyverse)
+library(zoo)
+
+# Montando tabela com valores mensais de 2014
+
+d0_14 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2014_execucao_despesas.csv", header = TRUE, sep = ",", dec = ",")
+
+colnames(d0_14) <- c("date", "func", "sub", "prog", "prog_desc", "acao", "desc_acao", "PL", "Empenhado", "Liquidado","RP")
+
+# retirando mes 00
+d0_14 <- d0_14[d0_14$date != "00/2014",]
+
+
+# evitando notacao cientifica
+options(scipen = 999)
+# criando chave prog + acao
+d0_14$chave <- paste(d0_14$prog,d0_14$acao, sep = "")
+
+# retirando o que esta com data 00/2014
+#d0 <- d0[d0$date != "00/2014",]
+
+# vou comecar com funcional 10 - saude
+# preciso filtrar o df 
+f10_14 <- d0_14[d0_14$fun == 10,]
+
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
+# eu sei que devo usar group by e spread...
+f10_14 <- f10_14 %>%
+  group_by(date, chave) %>%
+  summarize(liq = sum(Liquidado))
+
+# Inserindo descricoes dos programas e funcoes
+f10_14$prog <- substr(f10_14$chave,1,4)
+f10_14$prog_desc <- d0_14$prog_desc[match(f10_14$prog, d0_14$prog)]
+f10_14$acao <- substr(f10_14$chave,5,8)
+f10_14$acao_desc <- d0_14$desc_acao[match(f10_14$acao, d0_14$acao)]
+                       
+# retirando o que nao tem valor 
+f10_14 <- f10_14[f10_14$liq != 0,]
+# jogando mes como coluna
+f10_14 <- spread(f10_14, key = date, value = liq)
+f10_14$func <- "Saúde"
+f10_14 <- f10_14[,c(19,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)]
+
+# deflacionando
+library(rbcb) # pacote Banco Central
+#data inicio da seleção
+DataInicio="2014-01-01"
+d1 <- rbcb::get_series(c(433), start_date=DataInicio)
+# criando deflator / utilizando funcao do Cecon
+source("https://raw.githubusercontent.com/arthurwelle/Cecon/master/RScripts")
+d1$defl <- FazTexto.N_Indice(d1$`433`)
+d1$date2 <- paste(substring(d1$date,6,7),substring(d1$date,1,4), sep = "/")
+
+
+# Deflacionando
+for (i in 1:12) {
+  c <- colnames(f10_14[,c(7:18)])
+ f10_14[,c[i]] <- mapply('*', f10_14[,c[i]], d1[d1$date2 == c[i],3])
+}
+
+```
+
+```{r 2018, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALSE}
+
+# carregando pacontes
+library(knitr) 
+library(dplyr) 
+library(tidyverse)
+library(zoo)
+
+# Montando tabela com valores mensais de 2014
+
+d0_18 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2018_execucao_despesas.csv", header = TRUE, sep = ",", dec = ",")
+
+colnames(d0_18) <- c("date", "func", "sub", "prog", "prog_desc", "acao", "desc_acao", "PL", "Empenhado", "Liquidado","RP")
+
+# retirando mes 00
+d0_18 <- d0_18[d0_18$date != "00/2018",]
+
+
+# evitando notacao cientifica
+options(scipen = 999)
+# criando chave prog + acao
+d0_18$chave <- paste(d0_18$prog,d0_18$acao, sep = "")
+
+# retirando o que esta com data 00/2014
+#d0_18 <- d0_18[d0_18$date != "00/2014",]
+
+# vou comecar com funcional 10 - saude
+# preciso filtrar o df 
+f10_18 <- d0_18[d0_18$fun == 10,]
+
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
+# eu sei que devo usar group by e spread...
+f10_18 <- f10_18 %>%
+  group_by(date, chave) %>%
+  summarize(liq = sum(Liquidado))
+
+# Inserindo descricoes dos programas e funcoes
+f10_18$prog <- substr(f10_18$chave,1,4)
+f10_18$prog_desc <- d0_18$prog_desc[match(f10_18$prog, d0_18$prog)]
+f10_18$acao <- substr(f10_18$chave,5,8)
+f10_18$acao_desc <- d0_18$desc_acao[match(f10_18$acao, d0_18$acao)]
+                       
+# retirando o que nao tem valor 
+f10_18 <- f10_18[f10_18$liq != 0,]
+# jogando mes como coluna
+f10_18 <- spread(f10_18, key = date, value = liq)
+f10_18$func <- "Saúde"
+f10_18 <- f10_18[,c(18,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)]
+
+
+# Deflacionando
+for (i in 1:12) {
+  c <- colnames(f10_18[,c(7:18)])
+ f10_18[,c[i]] <- mapply('*', f10_18[,c[i]], d1[d1$date2 == c[i],3])
+}
+
+
+```
+
+```{r 2019, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALS}
+
+# carregando pacontes
+library(knitr) 
+library(dplyr) 
+library(tidyverse)
+library(zoo)
+
+# Montando tabela com valores mensais de 2014
+
+d0_19 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2019_execucao_despesas.csv", header = TRUE, sep = ",", dec = ",")
+
+colnames(d0_19) <- c("date", "func", "sub", "prog", "prog_desc", "acao", "desc_acao", "PL", "Empenhado", "Liquidado","RP")
+
+# retirando mes 00
+d0_19 <- d0_19[d0_19$date != "00/2019",]
+
+
+# evitando notacao cientifica
+options(scipen = 999)
+# criando chave prog + acao
+d0_19$chave <- paste(d0_19$prog,d0_19$acao, sep = "")
+
+# retirando o que esta com data 00/2014
+#d0_19 <- d0_19[d0_19$date != "00/2014",]
+
+# vou comecar com funcional 10 - saude
+# preciso filtrar o df 
+f10_19 <- d0_19[d0_19$fun == 10,]
+
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
+# eu sei que devo usar group by e spread...
+f10_19 <- f10_19 %>%
+  group_by(date, chave) %>%
+  summarize(liq = sum(Liquidado))
+
+# Inserindo descricoes dos programas e funcoes
+f10_19$prog <- substr(f10_19$chave,1,4)
+f10_19$prog_desc <- d0_19$prog_desc[match(f10_19$prog, d0_19$prog)]
+f10_19$acao <- substr(f10_19$chave,5,8)
+f10_19$acao_desc <- d0_19$desc_acao[match(f10_19$acao, d0_19$acao)]
+                       
+# retirando o que nao tem valor 
+f10_19 <- f10_19[f10_19$liq != 0,]
+# jogando mes como coluna
+f10_19 <- spread(f10_19, key = date, value = liq)
+f10_19$func <- "Saúde"
+f10_19 <- f10_19[,c(12,1,2,3,4,5,6,7,8,9,10,11)]
+
+
+# Deflacionando
+for (i in 1:6) {
+  c <- colnames(f10_19[,c(7:12)])
+ f10_19[,c[i]] <- mapply('*', f10_19[,c[i]], d1[d1$date2 == c[i],3])
+}
+
+f10 <- f10_19 %>%
+  left_join(select(f10_18,c(2,7:18)), by = "chave") %>%
+  left_join(select(f10_14,c(2,7:18)), by = "chave") 
+
+
+f10$Tri1_14 <- f10 %>%
+  select(c("01/2014","02/2014","03/2014")) %>%
+  
+
+# criando funcao e arredondando data frame
+round_df <- function(x, digits) {
+  # round all variables
+  #x : data frame
+  # number o digits
+  numeric_columns <- sapply(x, mode) == 'numeric'
+    x[numeric_columns] <-  round(x[numeric_columns], digits)
+    x
+}
+
+# diminuindo casas decimais e substituindo NA por 0
+f10[,7:36] <- round_df(f10[,7:36],2)
+f10[is.na(f10)] <- 0
+
+write.csv2(f10,"/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/Output/f10.csv")
+```
+
+
+
