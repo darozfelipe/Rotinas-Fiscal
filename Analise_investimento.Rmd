@@ -17,15 +17,14 @@ library(zoo)
 
 # Montando tabela com valores mensais de 2019
 
-d0 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2019_investimento.csv", header = TRUE, sep = ",")
-d0 <- d0[,c(1,4:9)]
+d0 <- read.csv2(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2019_despesas_investimento.csv", header = TRUE, sep = ",")
 
-colnames(d0) <- c("date", "elem", "elem_desc", "PL", "empe", "liq", "RP")
+d0 <- d0[,c(1,2,4:9)]
+
+colnames(d0) <- c("date","gnd", "elem", "elem_desc", "PL", "empe", "liq", "RP")
 
 # retirando mes 00
 d0 <- d0[d0$date != "00/2019",]
-
-
 # evitando notacao cientifica
 options(scipen = 999)
 
@@ -68,14 +67,13 @@ for (i in 1:6) {
 
 # Montando tabela com valores mensais de 2018
 
-d0 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2018_investimento.csv", header = TRUE, sep = ",")
-d0 <- d0[,c(1,4:9)]
+d0 <- read.csv2(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2018_despesas_investimento.csv", header = TRUE, sep = ",")
+d0 <- d0[,c(1,2,4:9)]
 
-colnames(d0) <- c("date", "elem", "elem_desc", "PL", "empe", "liq", "RP")
+colnames(d0) <- c("date", "gnd", "elem","elem_desc", "PL", "empe", "liq", "RP")
 
 # retirando mes 00
 d0 <- d0[d0$date != "00/2018",]
-
 # evitando notacao cientifica
 options(scipen = 999)
 
@@ -88,9 +86,6 @@ d_18 <- d0 %>%
 
 # Inserindo descricoes dos programas e funcoes
 d_18$desc <- d0$elem_desc[match(d_18$elem,d0$elem)]
-
-# retirando o que nao tem valor 
-#f10_14 <- f10_14[f10_14$liq != 0,]
 # jogando mes como coluna
 d_18 <- spread(d_18, key = date, value = liq)
 
@@ -107,31 +102,25 @@ for (i in 1:12) {
 ```{r 2014, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALSE}
 
 
-# Montando tabela com valores mensais de 2018
+# Montando tabela com valores mensais de 2014
 
-d0 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2014_investimento.csv", header = TRUE, sep = ",")
-d0 <- d0[,c(1,4:9)]
+d0 <- read.csv2(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2014_despesas_investimento.csv", header = TRUE, sep = ",")
+d0 <- d0[,c(1,2,4:9)]
 
-colnames(d0) <- c("date", "elem", "elem_desc", "PL", "empe", "liq", "RP")
+colnames(d0) <- c("date","gnd", "elem", "elem_desc", "PL", "empe", "liq", "RP")
 
 # retirando mes 00
 d0 <- d0[d0$date != "00/2014",]
-
 # evitando notacao cientifica
 options(scipen = 999)
 
 # agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
-# eu sei que devo usar group by e spread...
 d_14 <- d0 %>%
   group_by(date, elem) %>%
   summarise(liq = sum(liq,RP))
 
-
 # Inserindo descricoes dos programas e funcoes
 d_14$desc <- d0$elem_desc[match(d_14$elem,d0$elem)]
-
-# retirando o que nao tem valor 
-#f10_14 <- f10_14[f10_14$liq != 0,]
 # jogando mes como coluna
 d_14 <- spread(d_14, key = date, value = liq)
 
@@ -141,7 +130,9 @@ for (i in 1:12) {
  d_14[,c[i]] <- mapply('*', d_14[,c[i]], ipca[ipca$date2 == c[i],3])
 }
 
-d_14 <- d_14[c(-23),]
+
+#tirando ultima linha de 2014, esta vazia
+d_14 <- d_14[c(-nrow(d_14)),]
 d_14$elem <- as.numeric(as.character(d_14$elem))
 ```
 
@@ -159,7 +150,6 @@ tri1 <- inv %>%
  mutate(tri1_19 = rowSums(select(.,'01/2019','02/2019','03/2019'))) %>%
   mutate(tri1_18 = rowSums(select(.,'01/2018','02/2018','03/2018'))) %>%
 mutate(tri1_14 = rowSums(select(.,'01/2014','02/2014','03/2014')))
-
 
 
 # criando colunas de calculos

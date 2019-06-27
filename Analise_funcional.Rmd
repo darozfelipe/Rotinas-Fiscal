@@ -53,10 +53,6 @@ d0_19$chave <- paste(d0_19$prog,d0_19$acao, sep = "")
 # alterando typeof de funcional para fazer loop
 d0_19$func <- as.character(d0_19$func)
 
-# carregando df com descricoes
-df_desc <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/desc.csv", header = TRUE, sep = ",", dec = ",")
-colnames(df_desc) <- c("linha","chave","prog","prog_desc","acao","acao_desc")
-
 # Montando deflator
 library(rbcb) # pacote Banco Central
 #data inicio da seleção
@@ -67,72 +63,34 @@ source("https://raw.githubusercontent.com/arthurwelle/Cecon/master/RScripts")
 d1$defl <- FazTexto.N_Indice(d1$`433`)
 d1$date2 <- paste(substring(d1$date,6,7),substring(d1$date,1,4), sep = "/")
 
-# loop para separar por mes, formato widht, por funcao
-# funcionais:
-# 10 - saude
-# 12 - educacao
-# 15 - urbanismo
-# 16 - habitacao
-# 08 - assistencia social
-# 09 - previdencia
-# 17 - saneamento
-
-f <- as.data.frame(c('10','12','15','16','08','09','17'))
-
-for (i in 1:7) {
   
 
 # Montando tabela com valores mensais de 2014
 # preciso filtrar o df 
-df_14 <- d0_14[d0_14$func == as.character(f[i,]),]
+df_14 <- d0_14
 
 
 # agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
 df_14 <- df_14 %>%
-  group_by(date, chave) %>%
+  group_by(date, func) %>%
   summarize(liq = sum(Liquidado,RP))
 
-# Inserindo descricoes dos programas e funcoes
-df_14$prog <- substr(df_14$chave,1,4)
-df_14$prog_desc <- df_desc$prog_desc[match(df_14$prog, df_desc$prog)]
-df_14$acao <- substr(df_14$chave,5,8)
-df_14$acao_desc <- df_desc$acao_desc[match(df_14$acao, df_desc$acao)]
-                       
-# retirando o que nao tem valor 
-#df_14 <- df_14[df_14$liq != 0,]
-# tirando ultima linha se for NA
-if (is.na(df_14[ nrow(df_14),])) {
-  df_14 <- df_14[-c(nrow(df_14)),] 
-} 
 # jogando mes como coluna
 df_14 <- spread(df_14, key = date, value = liq)
-
 
 
 ###########
 # Montando tabela com valores mensais de 2018
 
 # preciso filtrar o df 
-df_18 <- d0_18[d0_18$func == as.character(f[i,]),]
+df_18 <- d0_18
 
 
 # agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
 df_18 <- df_18 %>%
-  group_by(date, chave) %>%
+  group_by(date, func) %>%
   summarize(liq = sum(Liquidado,RP))
 
-# Inserindo descricoes dos programas e funcoes
-df_18$prog <- substr(df_18$chave,1,4)
-df_18$prog_desc <- df_desc$prog_desc[match(df_18$prog, df_desc$prog)]
-df_18$acao <- substr(df_18$chave,5,8)
-df_18$acao_desc <- df_desc$acao_desc[match(df_18$acao, df_desc$acao)]
-                       
-# retirando o que nao tem valor 
-#df_18 <- df_18[df_18$liq != 0,]
-# tirando ultima linha se for NA
-if (is.na(df_18[ nrow(df_18),])) {
-  df_18 <- df_18[-c(nrow(df_18)),] 
-} 
 # jogando mes como coluna
 df_18 <- spread(df_18, key = date, value = liq)
 
@@ -141,27 +99,14 @@ df_18 <- spread(df_18, key = date, value = liq)
 # Montando tabela com valores mensais de 2019
 
 # preciso filtrar o df 
-df_19 <- d0_19[d0_19$func == as.character(f[i,]),]
+df_19 <- d0_19
 
 
 # agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
-# eu sei que devo usar group by e spread...
 df_19 <- df_19 %>%
-  group_by(date, chave) %>%
+  group_by(date, func) %>%
   summarize(liq = sum(Liquidado,RP))
 
-# Inserindo descricoes dos programas e funcoes
-df_19$prog <- substr(df_19$chave,1,4)
-df_19$prog_desc <- df_desc$prog_desc[match(df_19$prog, df_desc$prog)]
-df_19$acao <- substr(df_19$chave,5,8)
-df_19$acao_desc <- df_desc$acao_desc[match(df_19$acao, df_desc$acao)]
-                       
-# retirando o que nao tem valor 
-#df_19 <- df_19[df_19$liq != 0,]
-# tirando ultima linha se for NA
-if (is.na(df_19[ nrow(df_19),])) {
-  df_19 <- df_19[-c(nrow(df_19)),] 
-} 
 # jogando mes como coluna
 df_19 <- spread(df_19, key = date, value = liq)
 
@@ -169,26 +114,17 @@ df_19 <- spread(df_19, key = date, value = liq)
 #######
 
 dff <- df_19 %>%
-  left_join(select(df_18,c(1,6:ncol(df_18))), by = "chave") %>%
-  left_join(select(df_14,c(1,6:ncol(df_14))), by = "chave") 
-
-
-assign(paste("f",as.character(f[i,]),sep = ""),dff)
-
-}
-
+  left_join(df_18, by = "func") %>%
+  left_join(df_14, by = "func") 
 
 
 # Deflacionando - depois fazer loop, alterei manualmente
-for (i in 1:29) {
-  c <- colnames(f08[,c(6:ncol(f08))])
- f08[,c[i]] <- mapply('*', f08[,c[i]], d1[d1$date2 == c[i],3])
+for (i in 1:30) {
+  c <- colnames(dff[,c(2:ncol(dff))])
+ dff[,c[i]] <- mapply('*', dff[,c[i]], d1[d1$date2 == c[i],3])
 }
 
 
-#f08$Tri1_14 <- f08 %>%
-#  select(c("01/2014","02/2014","03/2014")) %>%
-  
 
 # criando funcao e arredondando data frame
 round_df <- function(x, digits) {
@@ -201,18 +137,11 @@ round_df <- function(x, digits) {
 }
 
 # diminuindo casas decimais e substituindo NA por 0
-#h <- as.vector(c('f08','f08','f08','f08','f08','f08','f08'))
-#for (a in h) {
-#h[,6:35] <- round_df(h[,6:35],2)
-#h[is.na(f08)] <- 0  
-#}
-# nao deu certo...
-
-f08[,6:34] <- round_df(f08[,6:34],2)
-f08[is.na(f08)] <- 0 
+dff[,2:31] <- round_df(dff[,2:31],2)
+dff[is.na(dff)] <- 0 
 
 
-write.csv2(f08,"/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/Output/f08.csv")
+write.csv2(dff,"/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/Output/despesas_funcoes.csv")
 
 
 ```

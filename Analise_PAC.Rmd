@@ -1,0 +1,187 @@
+---
+title: "Analise Despesas"
+author: "Felipe Da Roz"
+date: "6/7/2019"
+output: html_document
+---
+
+## Análise Despesas por Função
+
+```{r 2014, message=FALSE, warning=FALSE, fig.height = 5, fig.width = 10, eval=TRUE, echo=FALSE}
+
+# carregando pacontes
+library(knitr) 
+library(dplyr) 
+library(tidyverse)
+library(zoo)
+
+# dados 2014
+d0_14 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2014_PAC.csv", header = TRUE, sep = ",")
+colnames(d0_14) <- c("date", "func", "sub", "prog",  "acao", "PL", "Empenhado", "Liquidado","RP")
+# retirando mes 00
+d0_14 <- d0_14[d0_14$date != "00/2014",]
+# evitando notacao cientifica
+options(scipen = 999)
+# inserindo 0 nos programas com 3 digitos
+d0_14[nchar(d0_14$prog) == 3,4] <- paste("0",d0_14[nchar(d0_14$prog) == 3,4], sep = "")
+# criando chave prog + uf
+#d0_14$chave <- paste(d0_14$prog,d0_14$UF, sep = "")
+# alterando typeof de prog para fazer loop
+d0_14$prog <- as.character(d0_14$prog)
+
+
+# dados 2018
+d0_18 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2018_PAC.csv", header = TRUE, sep = ",")
+colnames(d0_18) <- c("date", "func", "sub", "prog",  "acao",  "PL", "Empenhado", "Liquidado","RP")
+# retirando mes 00
+d0_18 <- d0_18[d0_18$date != "00/2018",]
+# evitando notacao cientifica
+options(scipen = 999)
+# inserindo 0 nos programas com 3 digitos
+d0_18[nchar(d0_18$prog) == 3,4] <- paste("0",d0_18[nchar(d0_18$prog) == 3,4], sep = "")
+# criando chave prog + uf
+d0_18$chave <- paste(d0_18$prog,d0_18$UF, sep = "")
+# alterando typeof de prog para fazer loop
+d0_18$prog <- as.character(d0_18$prog)
+
+
+# dados 2019
+d0_19 <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/2019_PAC.csv", header = TRUE, sep = ",")
+colnames(d0_19) <- c("date", "func", "sub", "prog",  "acao",  "PL", "Empenhado", "Liquidado","RP")
+# retirando mes 00
+d0_19 <- d0_19[d0_19$date != "00/2019",]
+# evitando notacao cientifica
+options(scipen = 999)
+# inserindo 0 nos programas com 3 digitos
+d0_19[nchar(d0_19$prog) == 3,4] <- paste("0",d0_19[nchar(d0_19$prog) == 3,4], sep = "")
+# criando chave prog + uf
+d0_19$chave <- paste(d0_19$prog,d0_19$UF, sep = "")
+# alterando typeof de prog para fazer loop
+d0_19$prog <- as.character(d0_19$prog)
+
+# Montando deflator
+library(rbcb) # pacote Banco Central
+#data inicio da seleção
+DataInicio="2014-01-01"
+d1 <- rbcb::get_series(c(433), start_date=DataInicio)
+# criando deflator / utilizando funcao do Cecon
+source("https://raw.githubusercontent.com/arthurwelle/Cecon/master/RScripts")
+d1$defl <- FazTexto.N_Indice(d1$`433`)
+d1$date2 <- paste(substring(d1$date,6,7),substring(d1$date,1,4), sep = "/")
+
+# carregando df com descricoes
+df_desc <- read.csv(file = "/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/desc.csv", header = TRUE, sep = ",", dec = ",")
+colnames(df_desc) <- c("linha","chave","prog","prog_desc","acao","acao_desc")
+
+
+########
+# Montando tabela com valores mensais de 2014
+# preciso filtrar o df 
+df_14 <- d0_14
+
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por programa + UF
+df_14 <- df_14 %>%
+  group_by(date, prog) %>%
+  summarize(liq = sum(Liquidado,RP))
+
+
+# Inserindo descricoes dos programas e UF
+#df_14$prog <- substr(df_14$chave,1,4)
+df_14$prog_desc <- df_desc$prog_desc[match(df_14$prog, df_desc$prog)]
+#df_14$UF <- substr(df_14$chave,5,6)
+
+
+# jogando mes como coluna
+df_14 <- spread(df_14, key = date, value = liq)
+
+
+###########
+# Montando tabela com valores mensais de 2018
+
+# preciso filtrar o df 
+df_18 <- d0_18
+
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por programa + UF
+df_18 <- df_18 %>%
+  group_by(date, prog) %>%
+  summarize(liq = sum(Liquidado,RP))
+
+# Inserindo descricoes dos programas e UF
+#df_18$prog <- substr(df_18$chave,1,4)
+df_18$prog_desc <- df_desc$prog_desc[match(df_18$prog, df_desc$prog)]
+#df_18$UF <- substr(df_18$chave,5,6)
+
+# jogando mes como coluna
+df_18 <- spread(df_18, key = date, value = liq)
+
+
+###########
+# Montando tabela com valores mensais de 2019
+
+# preciso filtrar o df 
+df_19 <- d0_19
+
+# agora preciso jogar os meses como coluna, somando valores liquidados por acao + programa
+df_19 <- df_19 %>%
+  group_by(date, prog) %>%
+  summarize(liq = sum(Liquidado,RP))
+
+# Inserindo descricoes dos programas e UF
+#df_19$prog <- substr(df_19$chave,1,4)
+df_19$prog_desc <- df_desc$prog_desc[match(df_19$prog, df_desc$prog)]
+#df_19$UF <- substr(df_19$chave,5,6)
+
+# jogando mes como coluna
+df_19 <- spread(df_19, key = date, value = liq)
+
+
+#######
+
+dff <- df_19[,"prog"]
+dff <- rbind(dff,df_14[,"prog"], df_19[,"prog"])
+dff <- as.data.frame(unique(dff$prog))
+colnames(dff) <- "prog"
+dff$prog_desc <- df_desc$prog_desc[match(dff$prog, df_desc$prog)]
+
+
+dff <- dff %>%
+  left_join(df_14, by = c("prog","prog_desc")) %>%
+  left_join(df_18, by = c("prog","prog_desc")) %>%
+  left_join(df_19, by = c("prog","prog_desc")) 
+
+
+# Deflacionando - depois fazer loop, alterei manualmente
+for (i in 1:30) {
+  c <- colnames(dff[,c(3:ncol(dff))])
+ dff[,c[i]] <- mapply('*', dff[,c[i]], d1[d1$date2 == c[i],3])
+}
+
+
+
+# criando funcao e arredondando data frame
+round_df <- function(x, digits) {
+  # round all variables
+  #x : data frame
+  # number o digits
+  numeric_columns <- sapply(x, mode) == 'numeric'
+    x[numeric_columns] <-  round(x[numeric_columns], digits)
+    x
+}
+
+# diminuindo casas decimais e substituindo NA por 0
+dff[,3:32] <- round_df(dff[,3:32],2)
+dff[is.na(dff)] <- 0 
+
+
+write.csv2(dff,"/Users/felipedaroz/Google Drive/RStudio/Dados/Fiscal/Output/despesas_PAC.csv")
+
+
+```
+
+
+
+
+
+
