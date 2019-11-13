@@ -1,0 +1,469 @@
+---
+title: "Finanças Municipais"
+output:
+  html_document:
+    toc: no
+  pdf_document:
+    toc: no
+always_allow_html: yes
+---
+
+##  Receitas e Despesas - Siconfi
+### https://siconfi.tesouro.gov.br/siconfi/index.jsf
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+# Autor: Felipe Da Roz
+# E-mail: daroz.felipe@gmail.com
+
+# clear global variables
+rm(list=ls())
+
+# carrega pacotes e funções criados para o Cecon
+source("https://raw.githubusercontent.com/iedados/Publico/master/RScripts.R")
+library(ggplot2)
+library(rbcb)
+library(plotly)
+library(dplyr)
+library(readxl) #ler dados em excel
+library(utils)
+library(tidyr)
+
+#Chama o CSS criado para o Cecon
+htmltools::includeCSS("https://raw.githubusercontent.com/iedados/Publico/master/styles.css")
+```
+
+
+# Upload de dados de receita
+```{r}
+
+# upload de dados RECEITA 2014 direto do zip
+  # municipios
+dados14_m <- read.csv2(unzip("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/finbra_MUN_ReceitasOrcamentarias(AnexoI-C)_2014.zip", "finbra.csv"), skip = 3, header = FALSE)
+
+
+#alterando titulo colunas
+colnames(dados14_m) <- c("municipio","cod_ibge", "uf","populacao","col","desc", "valor")
+# retirando primeira linha
+dados14_m <- dados14_m[-1,]
+
+# criando tabela com cada municipio, codigo ibge e populacao
+#mun <- unique(dados14_m[c("municipio","cod_ibge","uf","populacao")])
+#write.csv2(mun, file = "/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/cod.csv")
+
+# alterando , para . e transformando em numerico
+# municipios
+dados14_m$populacao <- as.numeric(levels(dados14_m$populacao)[dados14_m$populacao])
+dados14_m$valor <- as.numeric(sub(",", ".",dados14_m$valor, fixed = TRUE ))
+
+
+# criando funcao e arredondando data frame
+round_df <- function(x, digits) {
+  # round all variables
+  #x : data frame
+  # number o digits
+  numeric_columns <- sapply(x, mode) == 'numeric'
+    x[numeric_columns] <-  round(x[numeric_columns], digits)
+    x
+}
+# diminuindo casas decimais
+dados14_m$valor <- round_df(dados14_m$valor,2)
+
+
+# criando chave para compatibilizar com dicionario
+# criando codigo: 
+  # Receitas Brutas Realizadas - 1
+  # Dedu\xe7\xf5es - FUNDEB - 2
+  # Outras Dedu\xe7\xf5es da Receita  - 3
+  # Dedu\xe7\xf5es - Transfer\xeancias Constitucionais - 4
+
+# municipios
+dados14_m <- dados14_m %>%
+  mutate(cod_tipo = ifelse(dados14_m$col == 'Receitas Brutas Realizadas', 1,
+                           ifelse(dados14_m$col == 'Dedu\xe7\xf5es - FUNDEB', 2,
+                                  ifelse(dados14_m$col == 'Outras Dedu\xe7\xf5es da Receita', 3,
+                                         ifelse(dados14_m$col == 'Dedu\xe7\xf5es - Transfer\xeancias Constitucionais', 4, NA)))))
+
+
+# criando chave
+dados14_m <- dados14_m %>%
+  mutate(chave = paste0(substr(desc,1,16), cod_tipo))
+
+# upload dicionario
+dic_rend <- read.csv2("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/dicionario_receita.csv", sep=",")
+
+# juntando data frame com dicionario
+munic_14 <- left_join(dic_rend, dados14_m, by = "chave") 
+
+# reorganizando df
+munic_14 <- munic_14[,c(6,7,8,9,10,13,2,11,3,4,5,12)]
+
+# Preparando dados
+munic_14$codigo <- as.factor(munic_14$codigo)
+munic_14$valor <- as.numeric(sub(",", ".",munic_14$valor, fixed = TRUE ))
+#munic_14$populacao <- as.numeric(levels(munic_14$populacao)[munic_14$populacao])
+munic_14$tipo <- as.character(munic_14$tipo)
+
+
+rm(dic_rend)
+
+
+```
+
+# Análise das transferências de modo agregado
+Receita própria - codigo 6, 7, 8, 10, 11
+Transferências
+  Devolutiva - 33, 34, 51, 52, 54
+  Compensatória - 46, 53
+  Compensação Recursos Naturais - 36, 37, 38, 39, 40, 41, 42, 56
+  Redistributivas - 32, 43, 44, 45, 57
+  Fundeb - 62, 63
+  Outros - 15, 19, 25, 26, 27, 47, 48, 55, 58, 59, 67 
+  
+  
+```{r}
+
+# criando df por codigo de receita
+tipo_rec <- munic_14 %>%
+  filter(tipo !=  "Deduções") %>%
+  filter(tipo != "") %>%
+  group_by(tipo) %>%
+  summarise(valor = sum(valor)) %>%
+  mutate(part = (valor/sum(valor))*100)
+
+
+# criando df por tipo de receita
+tipo_rec <- munic_14 %>%
+  filter(codigo %in% c(6, 7, 8, 10, 11, 33, 34, 51, 52, 54, 46, 53, 36, 37, 38, 39, 40, 41, 42, 56, 32, 43, 44, 45, 57, 62, 63, 15, 19, 25, 26, 27, 47, 48, 55, 58, 59, 67 )) %>% 
+  group_by(nome) %>% 
+  summarise(valor = sum(valor)) %>%
+  mutate(part = (valor/sum(valor))*100) %>%
+  left_join(unique(munic_14[c("nome","tipo")]), by = "nome") # inserindo tipo de receita nesse df
+
+# sera que tenho que tirar as Deducoes FUNDEB? Ou já está deduzido?
+
+# criando df por tipo de receita de forma agregada
+tipo_rec_a <- munic_14 %>%
+  filter(codigo %in% c(6, 7, 8, 10, 11, 33, 34, 51, 52, 54, 46, 53, 36, 37, 38, 39, 40, 41, 42, 56, 32, 43, 44, 45, 57, 62, 63, 15, 19, 25, 26, 27, 47, 48, 55, 58, 59, 67)) %>% 
+  group_by(tipo) %>% 
+  summarise(valor = sum(valor)) %>%
+  mutate(part = (valor/sum(valor))*100)  
+
+
+#inserindo linha com total
+#cat_rec$nome <- as.character(cat_rec$nome)
+#cat_rec[nrow(cat_rec)+1,] <- list(NA,'total',sum(cat_rec$valor),NA)
+
+
+
+# criando df por tipo de receita PER CAPITA
+cate_rec_uf <- munic_14 %>%
+  filter(codigo %in% c(6, 7, 8, 10, 11, 33, 34, 51, 52, 54, 46, 53, 36, 37, 38, 39, 40, 41, 42, 56, 32, 43, 44, 45, 57, 62, 63, 15, 19, 25, 26, 27, 47, 48, 55, 58, 59, 67)) %>% 
+  group_by(nome, uf) %>% 
+  summarise(valor = sum(valor),
+            pop = sum(populacao)) %>%
+  #mutate(part = (valor/sum(valor))*100) %>%
+  left_join(unique(munic_14[c("nome","tipo")]), by = "nome") %>% # inserindo tipo de receita nesse df
+  group_by(tipo, uf) %>%
+  summarise(valor_pc = sum(valor)/sum(pop)) %>%
+  #mutate(part = (valor/sum(valor))*100) %>%
+  pivot_wider(names_from = tipo, values_from = valor_pc)
+
+
+#Para analisar algum municipio especifico
+#a <- munic_14 %>%
+ # filter(cod_ibge == 3204302) %>%
+#  mutate(valor_pc = valor/populacao)
+
+#write.csv2(a, file = "/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/a.csv")
+
+
+
+
+```
+
+# Análise por tamanho populacional
+
+```{r}
+
+# calculando percentis da populacao
+df_faixa <- data.frame("perc" = seq(0,1,.01))
+df_faixa$pop_faixa <- Hmisc::wtd.quantile(munic_14$populacao, probs = seq(0,1,.01))
+
+# criando codigo no df final para cada faixa de renda
+munic_14$faixa_pop <- findInterval(munic_14$populacao,df_faixa[,2], rightmost.closed = TRUE, left.open = TRUE, all.inside = TRUE)
+
+
+# data frame com codigo e passo a passo da receita
+df_munic_v1 <- munic_14 %>%
+  group_by(municipio, populacao, faixa_pop, uf) %>%
+  summarise(rec_prop = sum(valor[codigo %in% c(6, 7, 8, 10, 11)]),
+            dev = sum(valor[codigo %in% c(33, 34, 51, 52, 54, 36, 37, 38, 39, 40, 41, 42, 56, 46, 53)]),
+            redist = sum(valor[codigo %in% c(32, 43, 44, 45, 57, 62, 63)]),
+            s1 = rec_prop + dev,
+            s1_fpm = s1 + sum(valor[codigo %in% c(32)]),
+            s1_set = s1 + sum(valor[codigo %in% c(43, 44, 45, 57, 62, 63)]),
+            s2 = s1 + redist) %>%
+  mutate(rec_prop = rec_prop/populacao,
+            dev = dev/populacao,
+            redist = redist/populacao,
+            s1 = s1/populacao,
+            s1_fpm = s1_fpm/populacao,
+            s1_set = s1_set/populacao,
+            s2 = s2/populacao) %>%
+  mutate(reg = ifelse(grepl(paste(c('TO', 'RR', 'RO', 'PA', 'AP', 'AM', 'AC'), collapse = "|"), uf), 'Norte', ifelse(grepl(paste(c('SE', 'RN', 'PI', 'PE', 'PB', 'MA', 'CE', 'BA', 'AL'), collapse = "|"), uf), 'Nordeste',
+ifelse(grepl(paste(c('MT', 'MS', 'GO'), collapse = "|"), uf), 'Centro Oeste',
+ifelse(grepl(paste(c('SC','RS','PR'), collapse = "|"), uf), 'Sul','Sudeste'))))) 
+
+
+```
+
+
+# Criando Gráficos
+
+```{r}
+
+
+# grafico receita propria
+g_rec <- ggplot(df_munic_v1, aes(x = faixa_pop, y = rec_prop)) +
+    geom_point(aes(color = reg)) +
+    ylim(c(0,2000)) +
+    theme_bw()
+
+# grafico transferencias redistributivas
+g_redist <- ggplot(df_munic_v1, aes(x = faixa_pop, y = redist)) +
+    geom_point(aes(color = reg)) +
+    ylim(c(0,4000)) +
+    theme_bw()
+
+# grafico transferencias devolutivas
+g_dev <- ggplot(df_munic_v1, aes(x = faixa_pop, y = dev)) +
+    geom_point(aes(color = reg)) +
+    ylim(c(0,4000)) +
+    theme_bw()
+
+# grafixo receita propria + devolutivas
+g_plus_dev <- ggplot(df_munic_v1, aes(x = faixa_pop, y = s1)) +
+    geom_point(aes(color = reg)) +
+ ylim(c(0,8000)) +
+    theme_bw()
+
+# grafico receita propria + devolutivas + fpm
+g_plus_dev_fpm <- ggplot(df_munic_v1, aes(x = faixa_pop, y = s1_fpm)) +
+    geom_point(aes(color = reg)) +
+  ylim(c(0,8000)) +
+    theme_bw()
+
+# grafico receita propria + devolutivas + transferencias setoriais
+g_plus_dev_set <- ggplot(df_munic_v1, aes(x = faixa_pop, y = s1_set)) +
+    geom_point(aes(color = reg)) +
+  ylim(c(0,8000)) +
+    theme_bw()
+
+# grafico receita propria + devolutivas + redistrivutivas (fpm + transferencias setoriais)
+g_plus_redis <- ggplot(df_munic_v1, aes(x = faixa_pop, y = s2)) +
+    geom_point(aes(color = reg)) +
+  ylim(c(0,8000)) +
+    theme_bw()
+
+g_rec
+g_plus_dev
+g_plus_redis
+g_plus_dev_fpm
+g_plus_dev_set
+g_redist
+g_dev
+
+```
+
+# Gráfico com plotly
+```{r}
+library(plotly)
+
+p_rec <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~rec_prop, 
+             text = ~paste("R$ e Município: ", rec_prop, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+
+p_plus_dev <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~s1, 
+             text = ~paste("R$ e Município: ", s1, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_plus_redis <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~s2, 
+             text = ~paste("R$ e Município: ", s2, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_plus_dev_fpm <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~s1_fpm, 
+             text = ~paste("R$ e Município: ", s1_fpm, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+p_plus_dev_set <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~s1_set, 
+             text = ~paste("R$ e Município: ", s1_set, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_rec
+p_plus_dev
+p_plus_redis
+
+```
+
+# Dados IDH
+
+```{r}
+
+# input
+idh <- read_xlsx("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/IDH Municipios_1991_2010.xlsx", sheet = "MUN 91-00-10", range = "A1:IC16696", col_names = TRUE)
+
+str(idh)
+# para juntar com outra base: Codmun7
+# renda per capita: RDPC
+# populacao economicamente ativa: PEA
+# indice de desenvolvimento humano municipal: IDHM
+# IDH educacao: IDHM_E
+# IDH longevidade: IDHM_L
+# IDH renda: IDHM_R
+
+# por enquanto, vou selecionar apenas colunas de IDH e renda per capita
+idh <- idh %>%
+  filter(ANO == 2010) %>%
+  select(c("ANO","Codmun7","RDPC","IDHM","IDHM_E","IDHM_L","IDHM_R")) %>%
+  rename(ano = "ANO",  cod_ibge= "Codmun7",  rdpc= "RDPC", idhm= "IDHM",  idhm_e= "IDHM_E", idhm_l="IDHM_L", idhm_r="IDHM_R") %>%
+  mutate(cod_ibge = as.factor(cod_ibge))
+
+# alterando codigo dos municipios para factor
+idh$cod_ibge <- as.factor(idh$cod_ibge)
+# juntando com df de receitas municipais
+munic_14 <- left_join(munic_14, idh, by = "cod_ibge")
+
+
+
+# calculando percentis da populacao
+df_faixa$idh <- Hmisc::wtd.quantile(munic_14$idhm, probs = seq(0,1,.01))
+
+
+### PRECISO CRIAR codigo NO DF FINAL PARA CADA FAIXA DE RENDA
+munic_14$faixa_idh <- NA
+for (i in 1:nrow(munic_14)) {
+    munic_14$faixa_idh[i] <- (as.numeric(findInterval(munic_14$idhm[i],df_faixa[,3], rightmost.closed = TRUE, left.open = TRUE, all.inside = TRUE)))
+}
+
+# criando codigo no df final para cada faixa de renda
+munic_14$faixa_idh <- findInterval(munic_14$idhm,df_faixa[,3], rightmost.closed = TRUE, left.open = TRUE, all.inside = TRUE)
+
+
+
+```
+
+# Criando centil por IDH
+
+```{r}
+
+# montando df com cada municipio, faixas e categorias de receita
+df_munic_v2 <- munic_14 %>%
+  group_by(municipio, populacao, faixa_pop, faixa_idh, uf) %>%
+  summarise(rec_prop = sum(valor[codigo %in% c(6, 7, 8, 10, 11)]),
+            dev = sum(valor[codigo %in% c(33, 34, 51, 52, 54, 36, 37, 38, 39, 40, 41, 42, 56, 46, 53)]),
+            redist = sum(valor[codigo %in% c(32, 43, 44, 45, 57, 62, 63)]),
+            s1 = rec_prop + dev,
+            s1_fpm = s1 + sum(valor[codigo %in% c(32)]),
+            s1_set = s1 + sum(valor[codigo %in% c(43, 44, 45, 57, 62, 63)]),
+            s2 = s1 + redist) %>%
+  mutate(rec_prop = rec_prop/populacao,
+            dev = dev/populacao,
+            redist = redist/populacao,
+            s1 = s1/populacao,
+            s1_fpm = s1_fpm/populacao,
+            s1_set = s1_set/populacao,
+            s2 = s2/populacao) %>%
+  mutate(reg = ifelse(grepl(paste(c('TO', 'RR', 'RO', 'PA', 'AP', 'AM', 'AC'), collapse = "|"), uf), 'Norte', ifelse(grepl(paste(c('SE', 'RN', 'PI', 'PE', 'PB', 'MA', 'CE', 'BA', 'AL'), collapse = "|"), uf), 'Nordeste',
+ifelse(grepl(paste(c('MT', 'MS', 'GO'), collapse = "|"), uf), 'Centro Oeste',
+ifelse(grepl(paste(c('SC','RS','PR'), collapse = "|"), uf), 'Sul','Sudeste'))))) 
+
+# criando graficos centis de idh como eixo x
+
+
+# grafico receita propria
+g1_rec <- ggplot(df_munic_v2, aes(x = faixa_idh, y = rec_prop)) +
+    geom_point(aes(color = reg)) +
+    ylim(c(0,2000)) +
+    theme_bw()
+
+g1_rec_2 <- ggplot(df_munic_v2, aes(x = faixa_idh, y = rec_prop, shape = reg, color = faixa_pop)) +
+    geom_point(position = position_jitter(width = 0.5, height = 0.5)) +
+    ylim(c(0,2000)) +
+    theme_bw()
+
+# grafico transferencias redistributivas
+g1_redist <- ggplot(df_munic_v2, aes(x = faixa_idh, y = redist)) +
+    geom_point(aes(color = reg)) +
+    ylim(c(0,4000)) +
+    theme_bw()
+
+# grafico transferencias devolutivas
+g1_dev <- ggplot(df_munic_v2, aes(x = faixa_idh, y = dev)) +
+    geom_point(aes(color = reg)) +
+    ylim(c(0,4000)) +
+    theme_bw()
+
+# grafixo receita propria + devolutivas
+g1_plus_dev <- ggplot(df_munic_v2, aes(x = faixa_idh, y = s1)) +
+    geom_point(aes(color = reg)) +
+ ylim(c(0,8000)) +
+    theme_bw()
+
+# grafico receita propria + devolutivas + fpm
+g1_plus_dev_fpm <- ggplot(df_munic_v2, aes(x = faixa_idh, y = s1_fpm)) +
+    geom_point(aes(color = reg)) +
+  ylim(c(0,8000)) +
+    theme_bw()
+
+# grafico receita propria + devolutivas + transferencias setoriais
+g1_plus_dev_set <- ggplot(df_munic_v2, aes(x = faixa_idh, y = s1_set)) +
+    geom_point(aes(color = reg)) +
+  ylim(c(0,8000)) +
+    theme_bw()
+
+# grafico receita propria + devolutivas + redistrivutivas (fpm + transferencias setoriais)
+g1_plus_redis <- ggplot(df_munic_v2, aes(x = faixa_idh, y = s2)) +
+    geom_point(aes(color = reg)) +
+  ylim(c(0,8000)) +
+    theme_bw()
+
+g_rec
+g1_rec
+g_plus_dev
+g1_plus_dev
+g_plus_redis
+g1_plus_redis
+g_plus_dev_fpm
+g1_plus_dev_fpm
+g_plus_dev_set
+g1_plus_dev_set
+g_redist
+g1_redist
+g_dev
+g1_dev
+
+```
+
+
+
+
+

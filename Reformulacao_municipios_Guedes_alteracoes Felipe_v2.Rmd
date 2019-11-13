@@ -1,0 +1,178 @@
+---
+title: ""
+output:
+  html_document: default
+---
+
+# Proposta de mudança nos municípios - Paulo Guedes 
+
+Dados Siconfi - Tabela: Receitas Orçamentárias (Anexo I-C) 2018.  Disponível em https://siconfi.tesouro.gov.br/siconfi/pages/public/consulta_finbra/finbra_list.jsf
+
+```{r}
+# Packages
+
+library(rgdal)
+require(sp)
+library(ggmap)
+library(ggplot2)
+library(RgoogleMaps)
+library(dplyr)
+library(geobr)
+library(rmapshaper)
+library(plotly)
+```
+
+```{r}
+# lê dados
+d <- read.csv2(file = "/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/finbra.csv", skip = 3, header = FALSE) 
+
+# renomeia colunas
+colnames(d) <- c("municipio","cod_ibge", "uf","populacao","col","desc", "valor") 
+
+# retirando primeira linha
+d <- d[-1,]
+
+# alterando , para . e transformando em numerico
+# municipios
+d$populacao <- as.numeric(levels(d$populacao)[d$populacao])
+d$valor <- as.numeric(sub(",", ".",d$valor, fixed = TRUE ))
+
+# categorias de receitas
+d <- d %>%
+  mutate(cod_tipo = ifelse(d$col == 'Receitas Brutas Realizadas', 1,
+                           ifelse(d$col == 'Dedu\xe7\xf5es - FUNDEB', 2,
+                                  ifelse(d$col == 'Outras Dedu\xe7\xf5es da Receita', 3,
+                                         ifelse(d$col == 'Dedu\xe7\xf5es - Transfer\xeancias Constitucionais', 4, NA)))))
+
+
+# criando chave para dicionario
+d$chave <- substr(d$desc, 1, 14)
+d$chave <- paste0(d$chave, d$cod_tipo)
+
+
+# upload dicionario
+dic_rend <- read.csv2("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/dicionario_receita_18.csv", sep=",")
+
+# juntando data frame com dicionario
+d <- left_join(dic_rend, d, by = "chave") 
+
+# reorganizando df
+d <- d[,c(6,7,8,9,10,13,2,11,3,4,5,12)]
+
+# Preparando dados
+d$codigo <- as.factor(d$codigo)
+d$valor <- as.numeric(sub(",", ".",d$valor, fixed = TRUE ))
+#munic_14$populacao <- as.numeric(levels(munic_14$populacao)[munic_14$populacao])
+d$tipo <- as.character(d$tipo)
+
+
+# calculando receita propria/receita corrente
+d2 <- d %>%
+  group_by(municipio, cod_ibge, populacao, uf) %>%
+  summarise(rec_prop = sum(valor[codigo %in% c(6, 7, 8, 10, 11)]),
+            rec_corr = valor[codigo %in% c(2)]) %>%
+  mutate(Prop = ((rec_prop/rec_corr)),
+         Excluivel = ifelse(Prop <= 0.10 & populacao <=5000, 1, 0)) %>%
+  mutate(reg = ifelse(grepl(paste(c('TO', 'RR', 'RO', 'PA', 'AP', 'AM', 'AC'), collapse = "|"), uf), 'Norte', ifelse(grepl(paste(c('SE', 'RN', 'PI', 'PE', 'PB', 'MA', 'CE', 'BA', 'AL'), collapse = "|"), uf), 'Nordeste',
+ifelse(grepl(paste(c('MT', 'MS', 'GO'), collapse = "|"), uf), 'Centro Oeste',
+ifelse(grepl(paste(c('SC','RS','PR'), collapse = "|"), uf), 'Sul','Sudeste'))))) 
+
+
+
+
+### PAREI AQUI!
+
+
+#                          
+#d1 <- d  %>% dplyr::mutate(Grupo = case_when(Conta == "1.1.1.0.00.0.0 - Impostos" ~ "Propria",
+ #                                             Conta == "1.1.2.0.00.0.0 - Taxas" ~ "Propria",
+  #                                            Conta == "1.2.0.0.00.0.0 - Contribuições" ~ "Propria",
+   #                                           Conta == "1.3.0.0.00.0.0 - Receita Patrimonial" ~ "Propria",
+    #                                          Conta == "1.6.0.0.00.0.0 - Receita de Serviços" ~ "Propria",
+     #                                         Conta == "1.7.0.0.00.0.0 - Transferências Correntes" ~ "Transferencia",
+      #                                      Conta == "1.9.0.0.00.0.0 - Outras Receitas Correntes" ~ "Transferencia")) %>%
+       #       dplyr::group_by(Grupo, Instituicao) %>%
+        #      dplyr::summarise(Valor = sum(Valor),
+         #                      Pop = mean(Populacao),
+          #                     Cod.IBGE = min(Cod.IBGE)) %>%
+           #   stats::na.omit() %>%
+            #  tidyr::pivot_wider(names_from = c(Grupo), values_from = Valor ) %>%
+             # dplyr::mutate(Prop = Propria / (Transferencia + Propria),
+              #              Excluivel = ifelse(Prop <= 0.10 & Pop <= 5000 , 1 , 0) )
+
+```
+
+```{r , echo = FALSE, message = FALSE, warning = FALSE, eval=TRUE, include = FALSE, results = "hide"}
+# baixa os shapefiles dos municípios do pacote do IPEA geobr, simplificando para ocupar menos espaço
+mun_11 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=11, year=2018)))
+mun_12 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=12, year=2018)))
+mun_13 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=13, year=2018)))
+mun_14 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=14, year=2018)))
+mun_15 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=15, year=2018)))
+mun_16 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=16, year=2018)))
+mun_17 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=17, year=2018)))
+
+mun_21 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=21, year=2018)))
+mun_22 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=22, year=2018)))
+mun_23 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=23, year=2018)))
+mun_24 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=24, year=2018)))
+mun_25 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=25, year=2018)))
+mun_26 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=26, year=2018)))
+mun_27 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=27, year=2018)))
+mun_28 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=28, year=2018)))
+mun_29 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=29, year=2018)))
+
+mun_31 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=31, year=2018)))
+mun_32 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=32, year=2018)))
+mun_33 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=33, year=2018)))
+mun_35 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=35, year=2018)))
+
+mun_41 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=41, year=2018)))
+mun_42 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=42, year=2018)))
+mun_43 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=43, year=2018)))
+
+mun_50 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=50, year=2018)))
+mun_51 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=51, year=2018)))
+mun_52 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=52, year=2018)))
+mun_53 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=53, year=2018)))
+
+# junta tudo
+mun <- rbind(mun_11,mun_12,mun_13,mun_14,mun_15,mun_16,mun_17,mun_21,mun_22,mun_23,mun_24,mun_25,mun_26, mun_27,
+            mun_28,mun_29, mun_31,mun_32,mun_33,mun_35,mun_41,mun_42,mun_43,mun_50,mun_51,mun_52,mun_53)
+
+# apaga tudo para limpar a memoria
+rm(mun_11,mun_12,mun_13,mun_14,mun_15,mun_16,mun_17,mun_21,mun_22,mun_23,mun_24,mun_25,mun_26, mun_27,
+            mun_28,mun_29, mun_31,mun_32,mun_33,mun_35,mun_41,mun_42,mun_43,mun_50,mun_51,mun_52,mun_53)
+```
+
+```{r}
+# Joining, by = "uf"
+d2$cod_ibge <- as.numeric(levels(d2$cod_ibge)[d2$cod_ibge])
+mun2 <- dplyr::left_join(mun, d2, by = c("code_muni" = "cod_ibge" ))
+
+```
+
+```{r}
+# plot map
+m <- ggplot2::ggplot(mun2) +
+                    geom_sf(mapping = aes(fill = Excluivel), colour = NA) +
+                    theme(panel.grid.major = element_line(colour="gray85", size=0.5),
+                          legend.title=element_blank()) #+ 
+#                    scale_fill_distiller(palette = "Spectral")
+
+m
+```
+```{r}
+
+
+geodata2 <- sf::st_as_sf(mun2)
+
+m1 <- ggplot2::ggplot(geodata2) +
+                    geom_sf(mapping = aes(fill = Excluivel), colour = NA) +
+                    theme(panel.grid.major = element_line(colour="gray85", size=0.5),
+                          legend.title=element_blank())
+
+m1 <- plotly::ggplotly(m1)
+m1
+```
+
