@@ -1,0 +1,521 @@
+---
+title: "Finanças Municipais"
+output:
+  html_document:
+    toc: no
+  pdf_document:
+    toc: no
+always_allow_html: yes
+---
+
+##  Receitas e Despesas - Siconfi
+### https://siconfi.tesouro.gov.br/siconfi/index.jsf
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+# Autor: Felipe Da Roz
+# E-mail: daroz.felipe@gmail.com
+
+# clear global variables
+rm(list=ls())
+
+# carrega pacotes e funções criados para o Cecon
+source("https://raw.githubusercontent.com/iedados/Publico/master/RScripts.R")
+library(ggplot2)
+library(rbcb)
+library(plotly)
+library(dplyr)
+library(readxl) #ler dados em excel
+library(utils)
+library(tidyr)
+
+#Chama o CSS criado para o Cecon
+htmltools::includeCSS("https://raw.githubusercontent.com/iedados/Publico/master/styles.css")
+```
+
+
+# Upload de dados de receita
+```{r}
+
+# upload de dados RECEITA 2018 direto do zip
+  # municipios
+d17 <- read.csv2(unzip("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/finbra_MUN_ReceitasOrcamentarias(AnexoI-C)_2017.zip", "finbra.csv"), skip = 3, header = FALSE)
+
+
+#alterando titulo colunas
+colnames(d17) <- c("municipio","cod_ibge", "uf","populacao","col","desc", "valor")
+# retirando primeira linha
+d17 <- d17[-1,]
+
+# criando tabela com cada municipio, codigo ibge e populacao
+#c17 <- unique(d17[c("col","desc","chave")])
+#write.csv2(c17, file = "/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/c17.csv")
+
+# alterando , para . e transformando em numerico
+# municipios
+d17$populacao <- as.numeric(levels(d17$populacao)[d17$populacao])
+d17$valor <- as.numeric(sub(",", ".",d17$valor, fixed = TRUE ))
+
+
+# criando chave para compatibilizar com dicionario
+# criando codigo: 
+  # Receitas Brutas Realizadas - 1
+  # Dedu\xe7\xf5es - FUNDEB - 2
+  # Outras Dedu\xe7\xf5es da Receita  - 3
+  # Dedu\xe7\xf5es - Transfer\xeancias Constitucionais - 4
+
+# municipios
+d17 <- d17 %>%
+  mutate(cod_tipo = ifelse(d17$col == 'Receitas Brutas Realizadas', 1,
+                           ifelse(d17$col == 'Dedu\xe7\xf5es - FUNDEB', 2,
+                                  ifelse(d17$col == 'Outras Dedu\xe7\xf5es da Receita', 3,
+                                         ifelse(d17$col == 'Dedu\xe7\xf5es - Transfer\xeancias Constitucionais', 4, NA)))))
+
+
+# criando chave
+d17 <- d17 %>%
+  mutate(chave = paste0(substr(desc,1,16), cod_tipo))
+
+# upload dicionario
+dic_rend <- read.csv2("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/dicionario_receita_2.csv", sep=",")
+
+
+# juntando data frame com dicionario
+m_17 <- left_join(dic_rend, d17, by = "chave") 
+
+
+# reorganizando df
+m_17 <- m_17[,c(6,7,8,9,10,13,2,11,3,4,5,12)]
+
+# Preparando dados
+m_17$codigo <- as.factor(m_17$codigo)
+m_17$valor <- as.numeric(sub(",", ".",m_17$valor, fixed = TRUE ))
+#m_18$populacao <- as.numeric(levels(m_18$populacao)[m_18$populacao])
+m_17$tipo <- as.character(m_17$tipo)
+
+# tipo de receita especificas para estados ficam com NA, preciso remover estas linhas
+m_17 <- na.omit(m_17)
+
+rm(dic_rend)
+
+#Para analisar algum municipio especifico
+#b <- m_17_2 %>%
+#  filter(cod_ibge %in% c(4112702)) 
+
+
+# problema com municipio de Ivatuba (4111605): receita muito mais alta do que verificado na Siconfi - problema no ITBI.
+# Jataizinho (4112702): problema com transferencia da uniao - SUS fundo a fundo 
+
+# Excluindo Ivatuba e Jataizinho
+m_17 <- m_17 %>%
+  filter(cod_ibge != 4111605 & cod_ibge != 4112702)
+
+
+```
+
+# Análise das transferências de modo agregado
+Receita própria - categorias 5, 6, 7, 8, 9, 10, 11, 12, 13
+Transferências
+  Devolutiva - 37, 39, 53, 54, 56
+  Compensatória - 38, 51, 55
+  Compensação Recursos Naturais - 41, 57
+  Redistributivas - 35, 36
+  Redistributivas setorial - 48, 49, 50, 58, 60, 61
+  Outros - 16, 17, 22, 30, 31, 32, 74
+  
+  
+```{r}
+
+# criando df por codigo de receita
+tipo_rec <- m_18 %>%
+  filter(tipo !=  "Deduções") %>%
+  filter(tipo != "") %>%
+  group_by(tipo) %>%
+  summarise(valor = sum(valor)) %>%
+  mutate(part = (valor/sum(valor))*100)
+
+
+# criando df por tipo de receita
+tipo_rec <- m_17 %>%
+  filter(codigo %in% c(5, 6, 7, 8, 9, 10, 11, 12, 13, 37, 39, 53, 54, 56, 38, 51, 55, 41, 57, 35, 36, 48, 49, 50, 58, 60, 61, 16, 17, 22, 30, 31, 32, 74)) %>% 
+  group_by(nome) %>% 
+  summarise(valor = sum(valor)) %>%
+  left_join(unique(m_17[c("nome","tipo")]), by = "nome") # inserindo tipo de receita nesse df
+
+# sera que tenho que tirar as Deducoes FUNDEB? Ou já está deduzido?
+
+# criando df por tipo de receita de forma agregada
+tipo_rec_a <- m_17 %>%
+  filter(codigo %in% c(5, 6, 7, 8, 9, 10, 11, 12, 13, 37, 39, 53, 54, 56, 38, 51, 55, 41, 57, 35, 36, 48, 49, 50, 58, 60, 61, 16, 17, 22, 30, 31, 32, 74)) %>% 
+  group_by(categoria) %>% 
+  summarise(valor = sum(valor)) 
+
+
+#inserindo linha com total
+#cat_rec$nome <- as.character(cat_rec$nome)
+#cat_rec[nrow(cat_rec)+1,] <- list(NA,'total',sum(cat_rec$valor),NA)
+
+
+
+
+
+```
+
+# Análise por tamanho populacional
+
+```{r}
+
+# calculando percentis da populacao
+df_faixa <- data.frame("perc" = seq(0,1,.01))
+df_faixa$pop_faixa <- Hmisc::wtd.quantile(m_17$populacao, probs = seq(0,1,.01))
+
+# criando codigo no df final para cada faixa de renda
+m_17$faixa_pop <- findInterval(m_17$populacao,df_faixa[,2], rightmost.closed = TRUE, left.open = TRUE, all.inside = TRUE)
+
+d17_1 <- m_17 %>%
+  group_by(municipio, cod_ibge, populacao, faixa_pop, uf) %>%
+  summarise(prop = sum(valor[codigo %in% c(5, 6, 7, 8, 9, 10, 11, 12, 13)]),
+            dev = sum(valor[codigo %in% c(37, 39, 53, 54, 56, 38, 51, 55, 41, 57)]),
+            redis = sum(valor[codigo %in% c(35, 36, 48, 49, 50, 58, 60, 61)]),
+            outras = sum(valor[codigo %in% c(16, 17, 22, 30, 31, 32, 74)]),
+            prop_dev = (prop + dev),
+         plus_fpm = prop_dev + sum(valor[codigo %in% c(35, 36)]),
+         plus_set = prop_dev + sum(valor[codigo %in% c(48, 49, 50, 58, 60, 61)]),
+         plus_redis = prop_dev + redis
+            ) %>%
+  mutate(prop = prop/populacao,
+         dev = dev/populacao,
+         redis = redis/populacao,
+         outras = outras/populacao,
+         prop_dev = prop_dev/populacao,
+         plus_fpm = plus_fpm/populacao,
+         plus_set = plus_set/populacao,
+         plus_redis = plus_redis/populacao) %>%
+  mutate(reg = ifelse(grepl(paste(c('TO', 'RR', 'RO', 'PA', 'AP', 'AM', 'AC'), collapse = "|"), uf), 'Norte', ifelse(grepl(paste(c('SE', 'RN', 'PI', 'PE', 'PB', 'MA', 'CE', 'BA', 'AL'), collapse = "|"), uf), 'Nordeste',
+ifelse(grepl(paste(c('MT', 'MS', 'GO'), collapse = "|"), uf), 'Centro Oeste',
+ifelse(grepl(paste(c('SC','RS','PR'), collapse = "|"), uf), 'Sul','Sudeste')))))
+
+
+# INSERINDO IDH
+# input
+idh <- read_xlsx("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/IDH Municipios_1991_2010.xlsx", sheet = "MUN 91-00-10", range = "A1:IC16696", col_names = TRUE)
+
+# para juntar com outra base: Codmun7
+# renda per capita: RDPC
+# populacao economicamente ativa: PEA
+# indice de desenvolvimento humano municipal: IDHM
+# IDH educacao: IDHM_E
+# IDH longevidade: IDHM_L
+# IDH renda: IDHM_R
+
+# por enquanto, vou selecionar apenas colunas de IDH e renda per capita
+idh <- idh %>%
+  filter(ANO == 2010) %>%
+  select(c("ANO","Codmun7","RDPC","IDHM","IDHM_E","IDHM_L","IDHM_R")) %>%
+  rename(ano = "ANO",  cod_ibge= "Codmun7",  rdpc= "RDPC", idhm= "IDHM",  idhm_e= "IDHM_E", idhm_l="IDHM_L", idhm_r="IDHM_R") %>%
+  mutate(cod_ibge = as.factor(cod_ibge))
+
+# alterando codigo dos municipios para factor
+idh$cod_ibge <- as.factor(idh$cod_ibge)
+# juntando com df de receitas municipais
+m_17 <- left_join(m_17, idh, by = "cod_ibge")
+
+
+# calculando percentis da populacao
+df_faixa$idh <- Hmisc::wtd.quantile(m_17$idhm, probs = seq(0,1,.01))
+
+# criando codigo no df final para cada faixa de renda
+m_17$faixa_idh <- findInterval(m_17$idhm,df_faixa[,3], rightmost.closed = TRUE, left.open = TRUE, all.inside = TRUE)
+
+# montando df com cada municipio, faixas e categorias de receita
+d17_1 <- d17_1 %>%
+  left_join(unique(m_17[c("municipio","idhm","faixa_idh")]), by = "municipio") 
+
+
+
+```
+
+
+# Criando Gráficos
+
+```{r}
+
+
+# grafico receita propria
+g_arr <- ggplot(d17_1, aes(x = faixa_pop, y = prop)) +
+    geom_point(aes(color = reg)) +
+  ylim(0,3000) +
+    theme_bw()
+
+# grafico transferencias redistributivas
+g_rec_bruta <- ggplot(d17_1, aes(x = faixa_pop, y = prop_dev)) +
+    geom_point(aes(color = reg)) +
+ # ylim(0, 8000) +
+    theme_bw()
+
+
+# graficom com rec liq e fpm
+g_fpm <- ggplot(d17_1, aes(x = faixa_pop, y = plus_fpm)) +
+    geom_point(aes(color = reg)) +
+ #   ylim(0, 12000) +
+    theme_bw()
+
+# graficom com rec liq e setorial
+g_set <- ggplot(d17_1, aes(x = faixa_pop, y = plus_set)) +
+    geom_point(aes(color = reg)) +
+ #     ylim(0, 12000) +
+    theme_bw()
+
+# graficom com rec liq 
+g_rec_liq <- ggplot(d17_1, aes(x = faixa_pop, y = plus_redis)) +
+    geom_point(aes(color = reg)) +
+  #    ylim(0, 12000) +
+    theme_bw()
+
+g_arr
+g_arr + geom_hline(yintercept = 1500) + geom_vline(xintercept = 50)
+g_arr + geom_abline(intercept = 0, slope = 45)
+g_rec_bruta
+g_fpm
+g_set
+g_rec_liq
+
+summary(d17_1$redis)
+
+rm(g_rec,g_redist,g_dev,g_volunt)
+
+```
+
+# Gráfico com plotly
+
+```{r}
+
+library(plotly)
+
+p_arr <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_pop, y = ~prop, 
+             text = ~paste("R$ e Município: ", prop, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+
+p_rec_bruta <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_pop, y = ~prop_dev, 
+             text = ~paste("R$ e Município: ", prop_dev, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_fpm <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_pop, y = ~plus_fpm, 
+             text = ~paste("R$ e Município: ", plus_fpm, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_set <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_pop, y = ~plus_set, 
+             text = ~paste("R$ e Município: ", plus_set, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+
+p_rec_liq <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_pop, y = ~plus_redis, 
+             text = ~paste("R$ e Município: ", plus_redis, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_arr
+p_rec_bruta
+p_fpm
+p_set
+p_rec_liq
+
+
+   
+```
+
+
+
+# Criando centil por IDH
+
+```{r}
+
+# Graficos com IDH como centil
+p_arr <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_idh, y = ~prop, 
+             text = ~paste("R$ e Município: ", prop, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+
+p_rec_bruta <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_idh, y = ~prop_dev, 
+             text = ~paste("R$ e Município: ", prop_dev, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_fpm <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_idh, y = ~plus_fpm, 
+             text = ~paste("R$ e Município: ", plus_fpm, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_set <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_idh, y = ~plus_set, 
+             text = ~paste("R$ e Município: ", plus_set, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+p_rec_liq <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d17_1, x = ~faixa_idh, y = ~plus_redis, 
+             text = ~paste("R$ e Município: ", plus_redis, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_arr
+p_rec_bruta
+p_fpm
+p_set
+p_rec_liq
+
+
+```
+
+## MAPAS
+
+Mapa que apresente por cada "passo" da receita em relação ao IDH. 
+Receita Líquida: arrecadação própria dos municípios mais transferências devolutivas e compensatórias.
+Receita Disponível: receita líquita mais transferências redistributivas (FPM e setoriais/condicionais)
+
+Quatro quadrantes
+Q1: Baixo IDH e Baixa Receita
+Q2: Baixo IDH e Alta receita
+Q3: Alto IDH e Baixa receita
+Q4: Alto IDH e Alta receita
+
+Critério para IDH: acima/abaixo do 50 centil 
+Critério receita: acima/abaixo da mediana
+
+```{r}
+
+d17_1 <- d17_1 %>%
+  mutate(q_rl = ifelse(prop_dev < 750 & faixa_idh < 50, 'Q1',
+                          ifelse(prop_dev > 750 & faixa_idh < 50, 'Q2',
+                                 ifelse(prop_dev < 750 & faixa_idh > 50, 'Q3',
+                                        'Q4'))),
+         q_rd = ifelse(prop_dev < 2500 & faixa_idh < 50, 'Q1',
+                          ifelse(prop_dev > 2500 & faixa_idh < 50, 'Q2',
+                                 ifelse(prop_dev < 2500 & faixa_idh > 50, 'Q3',
+                                        'Q4'))),
+          q_red = ifelse(prop_dev < 1723 & faixa_idh < 50, 'Q1',
+                          ifelse(prop_dev > 1723 & faixa_idh < 50, 'Q2',
+                                 ifelse(prop_dev < 1723 & faixa_idh > 50, 'Q3',
+                                        'Q4'))))
+
+```
+
+
+```{r}
+
+library(rgdal)
+require(sp)
+library(ggmap)
+library(ggplot2)
+library(RgoogleMaps)
+library(dplyr)
+library(geobr)
+library(rmapshaper)
+library(plotly)
+
+
+# baixa os shapefiles dos municípios do pacote do IPEA geobr, simplificando para ocupar menos espaço
+mun_11 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=11, year=2018)))
+mun_12 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=12, year=2018)))
+mun_13 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=13, year=2018)))
+mun_14 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=14, year=2018)))
+mun_15 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=15, year=2018)))
+mun_16 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=16, year=2018)))
+mun_17 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=17, year=2018)))
+
+mun_21 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=21, year=2018)))
+mun_22 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=22, year=2018)))
+mun_23 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=23, year=2018)))
+mun_24 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=24, year=2018)))
+mun_25 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=25, year=2018)))
+mun_26 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=26, year=2018)))
+mun_27 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=27, year=2018)))
+mun_28 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=28, year=2018)))
+mun_29 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=29, year=2018)))
+
+mun_31 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=31, year=2018)))
+mun_32 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=32, year=2018)))
+mun_33 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=33, year=2018)))
+mun_35 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=35, year=2018)))
+
+mun_41 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=41, year=2018)))
+mun_42 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=42, year=2018)))
+mun_43 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=43, year=2018)))
+
+mun_50 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=50, year=2018)))
+mun_51 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=51, year=2018)))
+mun_52 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=52, year=2018)))
+mun_53 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=53, year=2018)))
+
+# junta tudo
+mun <- rbind(mun_11,mun_12,mun_13,mun_14,mun_15,mun_16,mun_17,mun_21,mun_22,mun_23,mun_24,mun_25,mun_26, mun_27,
+            mun_28,mun_29, mun_31,mun_32,mun_33,mun_35,mun_41,mun_42,mun_43,mun_50,mun_51,mun_52,mun_53)
+
+# apaga tudo para limpar a memoria
+rm(mun_11,mun_12,mun_13,mun_14,mun_15,mun_16,mun_17,mun_21,mun_22,mun_23,mun_24,mun_25,mun_26, mun_27,
+            mun_28,mun_29, mun_31,mun_32,mun_33,mun_35,mun_41,mun_42,mun_43,mun_50,mun_51,mun_52,mun_53)
+
+```
+
+```{r}
+# juntando coordenadas com dados
+mun$code_muni <- as.integer(mun$code_muni)
+d17_1$cod_ibge <- as.integer(d17_1$cod_ibge)
+mun2 <- left_join(mun, d17_1, by = c("code_muni" = "cod_ibge"))
+
+```
+
+
+```{r}
+# mapa de peso de receitas proprias
+# plot map
+m <- ggplot2::ggplot(mun2) +
+                    geom_sf(mapping = aes(fill = q_rl), colour = NA) +
+                    theme(panel.grid.major = element_line(colour="gray85", size=0.5),
+                          legend.title=element_blank())
+
+m2 <- ggplot2::ggplot(mun2) +
+                    geom_sf(mapping = aes(fill = q_rd), colour = NA) +
+                    theme(panel.grid.major = element_line(colour="gray85", size=0.5),
+                          legend.title=element_blank())
+
+m3 <- ggplot2::ggplot(mun2) +
+                    geom_sf(mapping = aes(fill = q_red), colour = NA) +
+                    theme(panel.grid.major = element_line(colour="gray85", size=0.5),
+                          legend.title=element_blank()) +
+  ggtitle("Receita própria com Transferências Redistributivas, per capita", subtitle = paste0("(",length(unique(d17_1$municipio))," municípios")) 
+
+m
+m2
+m3
+
+ggsave("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/mapa1.pdf")
+
+```
+

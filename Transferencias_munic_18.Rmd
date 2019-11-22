@@ -171,11 +171,9 @@ tipo_rec_a <- m_18 %>%
 
 
 #Para analisar algum municipio especifico
-a <- m_18 %>%
+#a <- m_18 %>%
   filter(cod_ibge == 1713700) 
-
-
-write.csv2(a, file = "/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/a.csv")
+#write.csv2(a, file = "/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/a.csv")
 
 
 
@@ -199,12 +197,21 @@ d18_1 <- m_18 %>%
             dev = sum(valor[codigo %in% c(36, 37, 47, 48, 57, 58, 59, 60, 64)]),
             redis = sum(valor[codigo %in% c(35, 44, 45, 46, 61, 63, 68, 74)]),
             volunt = sum(valor[codigo %in% c(52, 54, 62, 70)]),
-            outras = sum(valor[codigo %in% c(14, 20, 29, 30, 31, 77)])) %>%
+            outras = sum(valor[codigo %in% c(14, 20, 29, 30, 31, 77)]),
+            prop_dev = (prop + dev),
+         plus_fpm = prop_dev + sum(valor[codigo %in% c(35)]),
+         plus_set = prop_dev + sum(valor[codigo %in% c(44,45,46,61,63,68,76)]),
+         plus_redis = prop_dev + redis
+            ) %>%
   mutate(prop = prop/populacao,
          dev = dev/populacao,
          redis = redis/populacao,
          volunt = volunt/populacao,
-         outras = outras/populacao) %>%
+         outras = outras/populacao,
+         prop_dev = prop_dev/populacao,
+         plus_fpm = plus_fpm/populacao,
+         plus_set = plus_set/populacao,
+         plus_redis = plus_redis/populacao) %>%
   mutate(reg = ifelse(grepl(paste(c('TO', 'RR', 'RO', 'PA', 'AP', 'AM', 'AC'), collapse = "|"), uf), 'Norte', ifelse(grepl(paste(c('SE', 'RN', 'PI', 'PE', 'PB', 'MA', 'CE', 'BA', 'AL'), collapse = "|"), uf), 'Nordeste',
 ifelse(grepl(paste(c('MT', 'MS', 'GO'), collapse = "|"), uf), 'Centro Oeste',
 ifelse(grepl(paste(c('SC','RS','PR'), collapse = "|"), uf), 'Sul','Sudeste')))))
@@ -274,42 +281,44 @@ rm(g_rec,g_redist,g_dev,g_volunt)
 library(plotly)
 
 p_rec <- plot_ly(type = 'scatter', mode = 'markers') %>%
-  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~rec_prop, 
-             text = ~paste("R$ e Município: ", rec_prop, '$<br>municipio:', municipio),
+  add_trace(data = d18_1, x = ~faixa_pop, y = ~prop, 
+             text = ~paste("R$ e Município: ", prop, '$<br>municipio:', municipio),
              color = ~reg,
              colors = "Dark2",
              opacity = 0.6)
 
 
 p_plus_dev <- plot_ly(type = 'scatter', mode = 'markers') %>%
-  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~s1, 
-             text = ~paste("R$ e Município: ", s1, '$<br>municipio:', municipio),
+  add_trace(data = d18_1, x = ~faixa_pop, y = ~prop_dev, 
+             text = ~paste("R$ e Município: ", prop_dev, '$<br>municipio:', municipio),
              color = ~reg,
              colors = "Dark2",
              opacity = 0.6)
 
+p_plus_fpm <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d18_1, x = ~faixa_pop, y = ~plus_fpm, 
+             text = ~paste("R$ e Município: ", plus_fpm, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
+
+p_plus_set <- plot_ly(type = 'scatter', mode = 'markers') %>%
+  add_trace(data = d18_1, x = ~faixa_pop, y = ~plus_set, 
+             text = ~paste("R$ e Município: ", plus_set, '$<br>municipio:', municipio),
+             color = ~reg,
+             colors = "Dark2",
+             opacity = 0.6)
 p_plus_redis <- plot_ly(type = 'scatter', mode = 'markers') %>%
-  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~s2, 
-             text = ~paste("R$ e Município: ", s2, '$<br>municipio:', municipio),
-             color = ~reg,
-             colors = "Dark2",
-             opacity = 0.6)
-
-p_plus_dev_fpm <- plot_ly(type = 'scatter', mode = 'markers') %>%
-  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~s1_fpm, 
-             text = ~paste("R$ e Município: ", s1_fpm, '$<br>municipio:', municipio),
-             color = ~reg,
-             colors = "Dark2",
-             opacity = 0.6)
-p_plus_dev_set <- plot_ly(type = 'scatter', mode = 'markers') %>%
-  add_trace(data = df_munic_v1, x = ~faixa_pop, y = ~s1_set, 
-             text = ~paste("R$ e Município: ", s1_set, '$<br>municipio:', municipio),
+  add_trace(data = d18_1, x = ~faixa_pop, y = ~plus_redis, 
+             text = ~paste("R$ e Município: ", plus_redis, '$<br>municipio:', municipio),
              color = ~reg,
              colors = "Dark2",
              opacity = 0.6)
 
 p_rec
 p_plus_dev
+p_plus_fpm
+p_plus_set
 p_plus_redis
 
 ```
@@ -321,7 +330,6 @@ p_plus_redis
 # input
 idh <- read_xlsx("/Users/felipedaroz/Google Drive/Academia/Doutorado/Dados_municipios/input/IDH Municipios_1991_2010.xlsx", sheet = "MUN 91-00-10", range = "A1:IC16696", col_names = TRUE)
 
-str(idh)
 # para juntar com outra base: Codmun7
 # renda per capita: RDPC
 # populacao economicamente ativa: PEA
@@ -359,39 +367,35 @@ m_18$faixa_idh <- findInterval(m_18$idhm,df_faixa[,3], rightmost.closed = TRUE, 
 
 # montando df com cada municipio, faixas e categorias de receita
 d18_1 <- d18_1 %>%
-  left_join(unique(m_18[c("municipio","faixa_idh")]), by = "municipio") %>%
+  left_join(unique(m_18[c("municipio","idhm","faixa_idh")]), by = "municipio") %>%
   mutate(prop2_perc = (((prop + dev)/(prop + dev + redis + volunt + outras))*100),
-         redis_perc = (((redis)/(prop + dev + redis + volunt + outras))*100))
+         redis_perc = (((redis)/(prop + dev + redis + volunt + outras))*100),
+         cod_ibge2 = as.numeric(cod_ibge)) 
 
 
 
 # grafico receita propria
-g1_rec <- ggplot(df_munic_v2, aes(x = faixa_idh, y = rec_prop)) +
-    geom_point(aes(color = reg)) +
-    ylim(c(0,2000)) +
+g1_rec <- ggplot(d18_1, aes(x = faixa_idh, y = prop, shape = reg, color = faixa_pop)) +
+    geom_point(position = position_jitter(width = 0.5, height = 0.5)) +
     theme_bw()
 
 g1_rec_2 <- ggplot(df_munic_v2, aes(x = faixa_idh, y = rec_prop, shape = reg, color = faixa_pop)) +
     geom_point(position = position_jitter(width = 0.5, height = 0.5)) +
-    ylim(c(0,2000)) +
     theme_bw()
 
 # grafico transferencias redistributivas
 g1_redist <- ggplot(df_munic_v2, aes(x = faixa_idh, y = redist)) +
     geom_point(aes(color = reg)) +
-    ylim(c(0,4000)) +
     theme_bw()
 
 # grafico transferencias devolutivas
 g1_dev <- ggplot(df_munic_v2, aes(x = faixa_idh, y = dev)) +
     geom_point(aes(color = reg)) +
-    ylim(c(0,4000)) +
     theme_bw()
 
 # grafixo receita propria + devolutivas
 g1_plus_dev <- ggplot(df_munic_v2, aes(x = faixa_idh, y = s1)) +
     geom_point(aes(color = reg)) +
- ylim(c(0,8000)) +
     theme_bw()
 
 # grafico receita propria + devolutivas + fpm
@@ -430,6 +434,82 @@ g1_dev
 ```
 
 
+```{r}
+
+library(rgdal)
+require(sp)
+library(ggmap)
+library(ggplot2)
+library(RgoogleMaps)
+library(dplyr)
+library(geobr)
+library(rmapshaper)
+library(plotly)
 
 
+# baixa os shapefiles dos municípios do pacote do IPEA geobr, simplificando para ocupar menos espaço
+mun_11 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=11, year=2018)))
+mun_12 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=12, year=2018)))
+mun_13 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=13, year=2018)))
+mun_14 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=14, year=2018)))
+mun_15 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=15, year=2018)))
+mun_16 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=16, year=2018)))
+mun_17 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=17, year=2018)))
+
+mun_21 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=21, year=2018)))
+mun_22 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=22, year=2018)))
+mun_23 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=23, year=2018)))
+mun_24 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=24, year=2018)))
+mun_25 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=25, year=2018)))
+mun_26 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=26, year=2018)))
+mun_27 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=27, year=2018)))
+mun_28 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=28, year=2018)))
+mun_29 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=29, year=2018)))
+
+mun_31 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=31, year=2018)))
+mun_32 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=32, year=2018)))
+mun_33 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=33, year=2018)))
+mun_35 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=35, year=2018)))
+
+mun_41 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=41, year=2018)))
+mun_42 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=42, year=2018)))
+mun_43 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=43, year=2018)))
+
+mun_50 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=50, year=2018)))
+mun_51 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=51, year=2018)))
+mun_52 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=52, year=2018)))
+mun_53 <- rmapshaper::ms_simplify(invisible( geobr::read_municipality(code_muni=53, year=2018)))
+
+# junta tudo
+mun <- rbind(mun_11,mun_12,mun_13,mun_14,mun_15,mun_16,mun_17,mun_21,mun_22,mun_23,mun_24,mun_25,mun_26, mun_27,
+            mun_28,mun_29, mun_31,mun_32,mun_33,mun_35,mun_41,mun_42,mun_43,mun_50,mun_51,mun_52,mun_53)
+
+# apaga tudo para limpar a memoria
+rm(mun_11,mun_12,mun_13,mun_14,mun_15,mun_16,mun_17,mun_21,mun_22,mun_23,mun_24,mun_25,mun_26, mun_27,
+            mun_28,mun_29, mun_31,mun_32,mun_33,mun_35,mun_41,mun_42,mun_43,mun_50,mun_51,mun_52,mun_53)
+
+```
+
+```{r}
+# juntando coordenadas com dados
+mun2 <- left_join(mun, d18_1, by = c("code_muni" = "cod_ibge2"))
+```
+
+
+```{r}
+# mapa de peso de receitas proprias
+# plot map
+m <- ggplot2::ggplot(mun2) +
+                    geom_sf(mapping = aes(fill = prop2_perc), colour = NA) +
+                    theme(panel.grid.major = element_line(colour="gray85", size=0.5),
+                          legend.title=element_blank())
+
+m2 <- ggplot2::ggplot(mun2) +
+                    geom_sf(mapping = aes(fill = redis_perc), colour = NA) +
+                    theme(panel.grid.major = element_line(colour="gray85", size=0.5),
+                          legend.title=element_blank())
+
+m
+m2
+```
 
